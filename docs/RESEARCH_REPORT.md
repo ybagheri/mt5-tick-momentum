@@ -24,6 +24,30 @@ attributed to signal quality vs cost drag.
 - `scripts/static_check.py`: **pass** — balanced syntax, required handlers, magic+symbol
   filtering, no martingale/grid patterns, BE asymmetry, trailing-only-tightens markers.
 
+## Lifecycle simulation (Linux, 2026-10-07 — "next phase" functional verification)
+
+`tests/test_simulation.py` replays synthetic tick streams through a tick-for-tick
+mirror of the full pipeline (collector → metrics → burst → gates → money SL/TP →
+BE → trailing → close). **8/8 pass:**
+
+| # | Scenario | Result |
+|---|---|---|
+| S1 | Bullish burst → BUY → continuation | `TAKE_PROFIT`, net +1.91 |
+| S2 | Bearish burst → SELL → continuation (mirror) | `TAKE_PROFIT`, net +1.91 |
+| S3 | Burst + 500-pt spread | No entry (`SPREAD` reject) |
+| S4 | Entry then instant crash | `STOP_LOSS`, net −1.22 |
+| S5 | Fresh bursts while a position is held (34 bursts) | No second position |
+| S6 | Fresh burst ~2 s after close | Blocked (`COOLDOWN`) |
+| S7 | Five consecutive SL episodes | `CONSEC_LOSS` lock, 6th setup rejected |
+| S8 | Flat market, 400 ticks | No trades |
+
+Two findings worth carrying into real-tick testing: (a) burst entries trigger after
+only a few ticks once displacement crosses the threshold, so most of the "burst
+window" is post-entry drift — continuation quality, not detection speed, decides the
+trade; (b) post-crash counter-bursts are legitimate SELL signals in the sim, which is
+correct behaviour but means loss streaks in real markets may interleave with
+counter-trend wins rather than clean SL sequences.
+
 ## Specification issues found and resolved
 
 1. **Commission ambiguity.** Spec's example ($6×0.01=$0.06) reads as a single charge,

@@ -11,6 +11,8 @@
 - [x] Phase 9 — Tester validation (Linux: 23 logic tests + static checks green;
       MT5 compile + real-tick runs pending on user terminal)
 - [x] Phase 10 — Optimization readiness (TP modes, small param set, OOS protocol)
+- [x] Next-phase (Linux) — lifecycle simulation harness `tests/test_simulation.py`, 8/8 green
+- [x] Docs bilingual — `README_FA.md` (Persian), language links in `README.md`
 - [ ] Next — Compile in MetaEditor (0 errors), run BACKTEST_GUIDE battery Tests A–H
 - [ ] Next — Multi-symbol real-tick comparison (US30/US100/XAUUSD/EURUSD)
 - [ ] Next — OOS validation; publish results in RESEARCH_REPORT (profitable or not)

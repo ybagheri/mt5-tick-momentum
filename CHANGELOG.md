@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10] — 2026-10-07 — Farsi docs + lifecycle simulation ("next phase")
+### Added
+- `README_FA.md`: full Persian translation; language links in `README.md`.
+- `tests/test_simulation.py`: tick-for-tick pipeline mirror, 8/8 scenarios green
+  (BUY/SELL TP, spread veto, crash SL, no second entry under 34 bursts, cooldown,
+  consec-loss lock, flat-market silence).
+### Notes
+- MetaEditor compile + Strategy Tester runs remain impossible on this Linux host
+  (no sudo/wine, 2.4 GB disk); documented as the next terminal-side step.
+- Simulation finding: entries trigger a few ticks into the burst window, so
+  continuation quality (not detection speed) decides trades; post-crash
+  counter-bursts are legitimate opposite signals (see RESEARCH_REPORT).
+
 ## [1.00] — 2026-10-06 — Full implementation, Phases 1–10
 
 ### Added

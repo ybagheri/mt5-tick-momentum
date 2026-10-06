@@ -15,6 +15,8 @@ trailing $0.50 tighten-only after BE; TP modes FIXED/TRAILING_ONLY/HYBRID.
 
 ## Test status
 - `tests/test_logic.py` — 23/23 PASS (covers spec §46 Tests 1–10, 12 at logic level).
+- `tests/test_simulation.py` — 8/8 PASS (integrated lifecycle: BUY/SELL TP, spread veto,
+  crash SL, no-averaging under 34 bursts, cooldown, consec-loss lock, flat-market silence).
 - `scripts/static_check.py` — PASS.
 - **NOT done (environment): no MetaEditor compile, no Strategy Tester runs.**
   First action on a Windows MT5 terminal: F7 compile → Test A visual real-tick run.

@@ -1,5 +1,7 @@
 # Tick Momentum Burst EA
 
+**Languages / زبان‌ها:** [English](README.md) · [فارسی](README_FA.md)
+
 **Tick Momentum Burst + Cost-Aware Break-Even + Dynamic Trailing Stop** — an MQL5 Expert Advisor
 that tests whether very short-term directional behaviour in the **MT5 tick stream** contains a
 tradable momentum edge on CFD symbols (US30, US100, US500, XAUUSD, EURUSD, …).
@@ -19,7 +21,8 @@ No profitability is claimed. See `docs/RESEARCH_REPORT.md`.
 ```text
 MQL5/Experts/TickMomentumBurstEA.mq5      main EA (inputs, OnInit/OnTick/OnTradeTransaction)
 MQL5/Include/TickMomentum/*.mqh           OOP modules (see Architecture below)
-tests/mirror.py, tests/test_logic.py      Python mirror + mandatory-scenario tests (run on Linux)
+tests/mirror.py, tests/test_logic.py      Python mirror + unit tests (23 green, run on Linux)
+tests/test_simulation.py                Tick-for-tick lifecycle simulation (8 scenarios green)
 scripts/static_check.py                   MQL5 sanity checker (brace balance, safety tokens)
 docs/                                     README(s), guides, research report
 ```
