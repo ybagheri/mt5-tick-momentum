@@ -58,6 +58,23 @@ SELL mirrored. Trigger = favourable move ≥ that distance. Never moves SL to ra
 | `InpEnableTrailing` | true | Trailing on/off (activates only after BE). |
 | `InpTrailingDistanceMoney` | 0.50 | Trail distance in account $, converted to price. BUY: SL only up. SELL: SL only down. |
 
+## Risk-based sizing (EA v1.10+, off by default)
+
+| Input | Default | Meaning |
+|---|---|---|
+| `InpUseRiskSizing` | false | `false` = fixed lot. `true` = volume scaled so the SL money amount equals equity × percent. |
+| `InpRiskPercent` | 0.5 | Risk per trade as % of **equity** (validated in (0, 10]). This becomes the effective SL money. |
+| `InpRiskMaxLot` | 1.0 | Hard cap for the risk-scaled volume (broker max also applies). |
+
+Mechanics: `k = (equity × pct/100) / InpSLMoney`, `V = InpLotSize × k`
+(normalized, capped). SL/TP/BE-buffer/trailing **money** values are all multiplied
+by the same `k`, so every price distance is identical to fixed-lot geometry — only
+money outcomes scale. If caps bind, the journal logs the effective SL money and the
+per-trade `risk_k` column records `k`. If the scaled volume falls below the broker
+minimum, the signal is skipped (no trade). Fixed mode is exactly `k = 1`.
+Use the tester with real equity curves; commission estimates scale automatically
+with the larger volume via `EstimateRoundTripCommission`.
+
 ## Protection
 
 | Input | Default | Meaning |

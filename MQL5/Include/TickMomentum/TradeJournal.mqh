@@ -56,6 +56,7 @@ struct TMBTradeRecord
    double            entryRatio;
    int               entryDispPoints;
    double            entryTps;
+   double            riskK;          // volume scale vs fixed lot (1.0 = fixed mode)
    ENUM_TMB_EXIT_REASON exitReason;
    datetime          openTime;
    datetime          closeTime;
@@ -89,7 +90,8 @@ public:
 
    void              OnOpen(ulong ticket, string symbol, int dir, double vol,
                             double entry, double sl, double tp, int spreadEntry,
-                            double estComm, TBMetrics &metrics, datetime nowServer)
+                            double estComm, TBMetrics &metrics, datetime nowServer,
+                            double riskK)
      {
       ZeroMemory(m_open);
       m_open.ticket=ticket; m_open.symbol=symbol; m_open.direction=dir;
@@ -99,6 +101,7 @@ public:
       m_open.entryRatio=metrics.dirRatio;
       m_open.entryDispPoints=metrics.displacementPoints;
       m_open.entryTps=metrics.ticksPerSecond;
+      m_open.riskK=riskK;
       m_open.openTime=nowServer;
       m_hasOpen=true; m_bestFav=entry; m_worstAdv=entry; m_ticksInTrade=0;
      }
@@ -157,7 +160,7 @@ private:
       if(h==INVALID_HANDLE) return;
       FileWrite(h,"close_time","symbol","dir","vol","entry","exit","sl0","tp0",
          "spread_entry","est_comm","actual_comm","gross","net","mfe","mae",
-         "hold_s","ticks","ratio","disp_pts","tps","exit_reason","ticket");
+         "hold_s","ticks","ratio","disp_pts","tps","exit_reason","ticket","risk_k");
       FileClose(h);
      }
    void              AppendCSV(TMBTradeRecord &r)
@@ -170,7 +173,7 @@ private:
          r.initialSL, r.initialTP, r.spreadEntry, r.estCommission, r.actualCommission,
          r.grossProfit, r.netProfit, r.mfeMoney, r.maeMoney, r.holdingSec, r.tickCount,
          r.entryRatio, r.entryDispPoints, r.entryTps,
-         TMBExitReasonToString(r.exitReason), r.ticket);
+         TMBExitReasonToString(r.exitReason), r.ticket, r.riskK);
       FileClose(h);
      }
   };

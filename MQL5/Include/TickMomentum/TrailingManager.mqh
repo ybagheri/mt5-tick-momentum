@@ -20,11 +20,14 @@ private:
    CLogger          *m_log;
    bool              m_enabled;
    double            m_distanceMoney;
+   double            m_effDistance;  // per-trade override (risk mode scaling)
+   bool              m_hasEff;
    long              m_magic;
    bool              m_requireBreakEvenFirst;
 public:
                      CTrailingStopManager(void): m_sym(NULL), m_math(NULL), m_cost(NULL),
                       m_log(NULL), m_enabled(true), m_distanceMoney(0.50),
+                      m_effDistance(0.0), m_hasEff(false),
                       m_magic(26061001), m_requireBreakEvenFirst(true) {}
 
    void              Init(CSymbolInfoCache *sym, CMoneyMath *math, CCostCalculator *cost,
@@ -36,6 +39,11 @@ public:
       m_requireBreakEvenFirst=requireBEFirst;
       m_trade.SetExpertMagicNumber(magic);
      }
+
+   //--- per-trade effective distance (risk-mode k scaling); cleared on close
+   void              SetEffectiveDistance(double d) { m_effDistance=d; m_hasEff=true; }
+   void              ClearEffective(void) { m_hasEff=false; }
+   double            ActiveDistance(void) const { return m_hasEff ? m_effDistance : m_distanceMoney; }
 
    bool              Manage(ulong ticket, bool breakEvenDone)
      {
@@ -52,7 +60,7 @@ public:
       MqlTick tk;
       if(!SymbolInfoTick(m_sym.Symbol(), tk)) return false;
 
-      double trailDist = m_math.MoneyToPriceDistance(m_distanceMoney, vol);
+      double trailDist = m_math.MoneyToPriceDistance(ActiveDistance(), vol);
       trailDist = m_math.EnforceMinStopDistance(trailDist);
       double minGap = m_math.StopsLevelPrice();
       bool moved=false;

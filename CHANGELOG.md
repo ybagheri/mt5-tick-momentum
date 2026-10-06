@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.20] — 2026-10-07 — Risk-based position sizing
+### Added
+- `InpUseRiskSizing / InpRiskPercent / InpRiskMaxLot`: optional risk-% mode.
+  `V = lot × (equity×pct/100) / SLMoney`, all money targets scaled by the same `k`
+  so price geometry is unchanged; caps logged, sub-minimum volumes skip the trade.
+- Per-trade effective BE/trailing overrides (`SetEffectiveBuffer/Distance`,
+  cleared on close); `risk_k` column in CSV journal.
+- `tests/test_risk_sizing.py`: 9/9 green (volume/k math, geometry invariance,
+  caps, below-min block, fallbacks).
+
 ## [1.10] — 2026-10-07 — Farsi docs + lifecycle simulation ("next phase")
 ### Added
 - `README_FA.md`: full Persian translation; language links in `README.md`.

@@ -5,7 +5,7 @@
 //| Current-chart-symbol EA. Tick stream is the primary signal.      |
 //+------------------------------------------------------------------+
 #property copyright "Tick Momentum Research"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 #property description "Tick Momentum Burst EA: tick imbalance + displacement + tick rate."
 #property description "Broker tick behaviour only - NOT centralized order flow."
@@ -21,6 +21,11 @@ input long     InpMagicNumber          = 26061001;  // Magic number
 input int      InpDeviationPoints      = 20;        // Max slippage (points)
 input int      InpMaxPositions         = 1;         // Max simultaneous strategy positions
 input int      InpTPMode               = 0;         // TP mode: 0=FIXED 1=TRAILING_ONLY 2=HYBRID
+
+//--- Risk-based sizing (off by default; scales volume so SL money = equity * pct)
+input bool     InpUseRiskSizing        = false;     // false=fixed lot, true=risk % of equity
+input double   InpRiskPercent          = 0.5;       // Risk per trade (% of equity) -> SL money
+input double   InpRiskMaxLot           = 1.0;       // Cap for risk-scaled volume
 
 //--- Commission (estimated; actual read from deal history on close)
 input double   InpCommissionPerLot     = 6.0;       // Est. commission per 1.0 lot, one side (account $)
@@ -70,7 +75,8 @@ int OnInit()
       InpEnableBreakEven, InpBreakEvenBufferMoney, InpEnableTrailing,
       InpTrailingDistanceMoney, InpTPMode, InpCooldownSeconds, InpMaxTradesPerDay,
       InpMaxConsecutiveLosses, InpMaxDailyLossMoney, InpMagicNumber,
-      InpDeviationPoints, InpMaxPositions, InpLogLevel))
+      InpDeviationPoints, InpMaxPositions, InpLogLevel,
+      InpUseRiskSizing, InpRiskPercent, InpRiskMaxLot))
      {
       Print("[TMB] Invalid configuration. Init failed.");
       return INIT_PARAMETERS_INCORRECT;
@@ -83,11 +89,12 @@ int OnInit()
    g_ctl.InitRiskJournal(g_ctl.LogPtr(), InpMaxTradesPerDay, InpMaxConsecutiveLosses,
       InpMaxDailyLossMoney, InpCooldownSeconds, InpEnableCSVJournal, InpCSVFile);
 
-   PrintFormat("[TMB] v1.00 started on %s magic=%I64d lot=%.2f SL=$%.2f TP=$%.2f win=%d ratio>=%.2f move>=%dpts tps>=%.1f spread<=%d BE=%s/%s trail=%s/%s TPmode=%d",
+   PrintFormat("[TMB] v1.10 started on %s magic=%I64d lot=%.2f SL=$%.2f TP=$%.2f win=%d ratio>=%.2f move>=%dpts tps>=%.1f spread<=%d BE=%s/%s trail=%s/%s TPmode=%d risk=%s/%.2f%%/max%.2f",
       _Symbol, InpMagicNumber, InpLotSize, InpSLMoney, InpTPMoney, InpTickWindow,
       InpMinimumDirectionalRatio, InpMinimumPriceMovePoints, InpMinimumTicksPerSecond,
       InpMaxSpreadPoints, (InpEnableBreakEven?"ON":"OFF"), DoubleToString(InpBreakEvenBufferMoney,2),
-      (InpEnableTrailing?"ON":"OFF"), DoubleToString(InpTrailingDistanceMoney,2), InpTPMode);
+      (InpEnableTrailing?"ON":"OFF"), DoubleToString(InpTrailingDistanceMoney,2), InpTPMode,
+      (InpUseRiskSizing?"ON":"OFF"), InpRiskPercent, InpRiskMaxLot);
    return INIT_SUCCEEDED;
   }
 //+------------------------------------------------------------------+

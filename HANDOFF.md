@@ -1,4 +1,4 @@
-# HANDOFF — Tick Momentum Burst EA v1.00 (2026-10-06)
+# HANDOFF — Tick Momentum Burst EA v1.20 (2026-10-07)
 
 ## Architecture
 Single EA `MQL5/Experts/TickMomentumBurstEA.mq5` + 15 `.mqh` modules under
@@ -12,11 +12,14 @@ All phases implemented in one build pass (empty repo, greenfield). Entry rules: 
 no position + no cooldown + no risk lock → market BUY/SELL with money-derived SL/TP.
 SL $1 / TP $2 defaults; BE = entry ± (round-trip est. commission + $0.02 buffer);
 trailing $0.50 tighten-only after BE; TP modes FIXED/TRAILING_ONLY/HYBRID.
+v1.20 adds optional risk-% sizing (off by default): volume scales so SL money =
+equity × pct, all money targets scaled by k, price geometry unchanged.
 
 ## Test status
 - `tests/test_logic.py` — 23/23 PASS (covers spec §46 Tests 1–10, 12 at logic level).
 - `tests/test_simulation.py` — 8/8 PASS (integrated lifecycle: BUY/SELL TP, spread veto,
   crash SL, no-averaging under 34 bursts, cooldown, consec-loss lock, flat-market silence).
+- `tests/test_risk_sizing.py` — 9/9 PASS (risk volume/k, geometry invariance, caps, blocks).
 - `scripts/static_check.py` — PASS.
 - **NOT done (environment): no MetaEditor compile, no Strategy Tester runs.**
   First action on a Windows MT5 terminal: F7 compile → Test A visual real-tick run.

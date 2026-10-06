@@ -20,10 +20,13 @@ private:
    CLogger          *m_log;
    bool              m_enabled;
    double            m_bufferMoney;
+   double            m_effBuffer;    // per-trade override (risk mode scaling)
+   bool              m_hasEff;
    long              m_magic;
 public:
                      CBreakEvenManager(void): m_sym(NULL), m_math(NULL), m_cost(NULL),
-                      m_log(NULL), m_enabled(true), m_bufferMoney(0.02), m_magic(26061001) {}
+                      m_log(NULL), m_enabled(true), m_bufferMoney(0.02),
+                      m_effBuffer(0.0), m_hasEff(false), m_magic(26061001) {}
 
    void              Init(CSymbolInfoCache *sym, CMoneyMath *math, CCostCalculator *cost,
                           CLogger *log, bool enabled, double bufferMoney, long magic)
@@ -33,6 +36,10 @@ public:
       m_trade.SetExpertMagicNumber(magic);
      }
 
+   //--- per-trade effective buffer (risk-mode k scaling); cleared on close
+   void              SetEffectiveBuffer(double b) { m_effBuffer=b; m_hasEff=true; }
+   void              ClearEffective(void) { m_hasEff=false; }
+   double            ActiveBuffer(void) const { return m_hasEff ? m_effBuffer : m_bufferMoney; }
    //--- Returns true if BE was newly applied (or already at/beyond BE).
    //--- mustBeBuy / ticket owned by EA; volume/entry from position.
    bool              Manage(ulong ticket)
@@ -49,10 +56,11 @@ public:
       MqlTick tk;
       if(!SymbolInfoTick(m_sym.Symbol(), tk)) return false;
 
-      double bePrice = isBuy ? m_cost.BreakEvenPriceBuy(entry, vol, m_bufferMoney)
-                             : m_cost.BreakEvenPriceSell(entry, vol, m_bufferMoney);
+      double buf = ActiveBuffer();
+      double bePrice = isBuy ? m_cost.BreakEvenPriceBuy(entry, vol, buf)
+                             : m_cost.BreakEvenPriceSell(entry, vol, buf);
       //--- trigger: favourable move covers costs+buffer
-      double reqDist = m_cost.RequiredFavourableDistance(vol, m_bufferMoney);
+      double reqDist = m_cost.RequiredFavourableDistance(vol, buf);
       bool covered;
       if(isBuy) covered = (tk.bid >= entry + reqDist - 1e-12);
       else      covered = (tk.ask <= entry - reqDist + 1e-12);

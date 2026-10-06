@@ -38,7 +38,7 @@ docs/                                     README(s), guides, research report
 | `CSymbolInfoCache` | Dynamic symbol props (digits, tick size/value, volume limits, stops/freeze) |
 | `CMoneyMath` | `money = dist/tickSize*tickValue*vol` conversions, stops-level enforcement, tick snapping |
 | `CCostCalculator` | Spread cost, estimated (pre-trade) vs actual (deal-history) commission, true BE prices |
-| `CPositionSizer` | Fixed lot + broker normalization/validation |
+| `CPositionSizer` | Fixed lot + optional risk-% sizing (v1.20, off by default) |
 | `CTradeExecutor` | `CTrade` market orders, monetary SL/TP, re-anchor to fill, retcode checks |
 | `CBreakEvenManager` | Moves SL to entry ± (round-trip commission + buffer) once covered; never fakes BE |
 | `CTrailingStopManager` | Tightens only (BUY↑ / SELL↓), respects stops level, requires BE first |

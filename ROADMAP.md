@@ -16,5 +16,5 @@
 - [ ] Next — Compile in MetaEditor (0 errors), run BACKTEST_GUIDE battery Tests A–H
 - [ ] Next — Multi-symbol real-tick comparison (US30/US100/XAUUSD/EURUSD)
 - [ ] Next — OOS validation; publish results in RESEARCH_REPORT (profitable or not)
-- [ ] Future — Risk-% position sizing extension point (`CPositionSizer`)
+- [x] Future — Risk-% position sizing extension point (`CPositionSizer`) — DONE v1.20
 - [ ] Future — Optional candle/volatility context filter (spec §1, off by default)

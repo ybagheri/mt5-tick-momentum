@@ -86,3 +86,24 @@ def trail_sell(current_sl, ask, trail_dist):
     new_sl = ask + trail_dist
     if current_sl == 0 or new_sl < current_sl: return new_sl
     return current_sl
+
+def risk_volume(equity, risk_pct, fixed_lot, sl_money_ref,
+                vol_min, vol_max, max_lot):
+    """Mirror of CPositionSizer::ComputeRiskVolume.
+    Returns dict(volume, k, risk_money, capped, note). volume 0 = no trade."""
+    if equity is None or equity <= 0: return dict(volume=0, k=0, risk_money=0, capped=False, note="NO_EQUITY")
+    if sl_money_ref is None or sl_money_ref <= 0: return dict(volume=0, k=0, risk_money=0, capped=False, note="NO_SLREF")
+    if fixed_lot is None or fixed_lot <= 0: return dict(volume=0, k=0, risk_money=0, capped=False, note="NO_FIXEDLOT")
+    want = equity * risk_pct / 100.0
+    k = want / sl_money_ref
+    v = fixed_lot * k
+    cap = min(vol_max, max_lot)
+    capped = False
+    if v > cap: v, capped = cap, True
+    # normalize down to step (step assumed to divide evenly here; caller passes step)
+    v = max(0.0, v)
+    if v < vol_min - 1e-12:
+        return dict(volume=0, k=0, risk_money=0, capped=capped, note="BELOW_MIN")
+    k_eff = v / fixed_lot
+    return dict(volume=v, k=k_eff, risk_money=sl_money_ref * k_eff,
+                capped=capped, note="CAPPED" if capped else "OK")

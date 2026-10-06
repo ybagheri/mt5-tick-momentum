@@ -65,6 +65,7 @@ private:
    double            m_maxDailyLoss;
    long              m_magic; int m_dev; int m_maxPos;
    bool              m_commDoubled;
+   bool              m_useRisk; double m_riskPct; double m_riskMaxLot;
 
    ENUM_TMB_STATE    m_state;
    ulong             m_ticket;
@@ -84,8 +85,9 @@ public:
       int tickWindow, double minRatio, int minMovePts, double minTps,
       int maxSpreadPts, double maxTps, int maxDispPts, int maxWindowSec,
       bool useBE, double beBuf, bool useTrail, double trailMoney, int tpMode,
-      int cooldown, int maxTradesDay, int maxConsecLoss, double maxDailyLoss,
-      long magic, int dev, int maxPos, int logLevel)
+       int cooldown, int maxTradesDay, int maxConsecLoss, double maxDailyLoss,
+       long magic, int dev, int maxPos, int logLevel,
+       bool useRisk, double riskPct, double riskMaxLot)
      {
       m_lot=lot; m_slMoney=slM; m_tpMoney=tpM; m_commPerLot=commPerLot; m_commDoubled=commDoubled;
       m_tickWindow=tickWindow; m_minRatio=minRatio; m_minMovePts=minMovePts; m_minTps=minTps;
@@ -93,6 +95,7 @@ public:
       m_useBE=useBE; m_beBuf=beBuf; m_useTrail=useTrail; m_trailMoney=trailMoney; m_tpMode=tpMode;
       m_cooldown=cooldown; m_maxTradesDay=maxTradesDay; m_maxConsecLoss=maxConsecLoss;
       m_maxDailyLoss=maxDailyLoss; m_magic=magic; m_dev=dev; m_maxPos=maxPos;
+      m_useRisk=useRisk; m_riskPct=riskPct; m_riskMaxLot=riskMaxLot;
       m_log.Init((ENUM_TMB_LOG_LEVEL)logLevel, "TMB");
       return Validate();
      }
@@ -108,6 +111,11 @@ public:
       if(m_maxPos<1) { m_log.Error("MaxPositions must be >= 1"); return false; }
       if(m_tpMode==TMB_TP_TRAILING_ONLY && !m_useTrail)
         { m_log.Error("TRAILING_ONLY requires trailing enabled"); return false; }
+      if(m_useRisk)
+        {
+         if(m_riskPct<=0 || m_riskPct>10.0) { m_log.Error("RiskPct must be in (0,10]"); return false; }
+         if(m_riskMaxLot<=0) { m_log.Error("RiskMaxLot must be > 0"); return false; }
+        }
       return true;
      }
 
@@ -123,7 +131,7 @@ public:
       m_ticks.Init(symbol, m_tickWindow);
       m_detector.Init(m_minRatio, m_minMovePts, m_minTps, m_sym.Point(), (double)m_maxWindowSec);
       m_signal.Init(m_maxSpreadPts, m_maxPos);
-      m_sizer.Init(&m_sym, m_lot);
+      m_sizer.Init(&m_sym, m_lot, m_riskPct, m_riskMaxLot);
       m_exec.Init(&m_sym, &m_math, &m_log, m_magic, m_dev);
       m_be.Init(&m_sym, &m_math, &m_cost, &m_log, m_useBE, m_beBuf, m_magic);
       m_trail.Init(&m_sym, &m_math, &m_cost, &m_log, m_useTrail, m_trailMoney, m_magic, true);
@@ -167,6 +175,7 @@ public:
                                  m_sym.TickValue(), m_sym.TickSize());
       m_risk.NotifyClose(nowServer, net, dayKey);
       m_ticket=0; m_beDone=false; m_state=TMB_ST_COOLDOWN;
+      m_be.ClearEffective(); m_trail.ClearEffective();
       return net;
      }
 
@@ -203,7 +212,8 @@ public:
          // position disappeared (SL/TP hit or manual close): if journal thinks one is open,
          // EA.OnTradeTransaction does authoritative close accounting; here just reset state.
          if(m_ticket!=0 && !m_journal.HasOpen())
-           { m_ticket=0; m_beDone=false; m_state=TMB_ST_COOLDOWN; }
+           { m_ticket=0; m_beDone=false; m_state=TMB_ST_COOLDOWN;
+             m_be.ClearEffective(); m_trail.ClearEffective(); }
         }
 
       // 3) entry gates
@@ -229,23 +239,42 @@ public:
          return;
         }
 
-      // 4) execute
+      // 4) execute: fixed lot, or risk-scaled volume with k-scaled money targets
+      // (price geometry identical to fixed mode; only money scales by k)
       m_state=TMB_ST_SIGNAL;
       double vol = m_sizer.ComputeVolume();
+      double scaleK = 1.0;
+      if(m_useRisk)
+        {
+         double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+         TMBRiskVolume rv = m_sizer.ComputeRiskVolume(equity, m_slMoney);
+         if(rv.volume<=0)
+           {
+            m_log.Warning("Risk sizing rejected: " + rv.note + " (no trade)");
+            m_state=TMB_ST_WAITING; return;
+           }
+         vol = rv.volume; scaleK = rv.scaleK;
+         if(rv.capped)
+            m_log.Warning(StringFormat("Risk volume capped at %.2f (k=%.2f, SL money=%.2f)",
+               vol, scaleK, rv.riskMoney));
+         m_be.SetEffectiveBuffer(m_beBuf*scaleK);
+         m_trail.SetEffectiveDistance(m_trailMoney*scaleK);
+        }
+      double slEff = m_slMoney*scaleK, tpEff = m_tpMoney*scaleK;
       string verr=""; if(!m_sizer.ValidateVolume(vol, verr)) { m_log.Error("Bad volume: "+verr); return; }
       bool isBuy = (sig.signal==TMB_SIG_BUY);
-      m_log.Info(StringFormat("SIGNAL %s ratio=%.2f disp=%dpts tps=%.1f spread=%d",
+      m_log.Info(StringFormat("SIGNAL %s ratio=%.2f disp=%dpts tps=%.1f spread=%d vol=%.2f k=%.2f",
          (isBuy?"BUY":"SELL"), m_lastMetrics.dirRatio, m_lastMetrics.displacementPoints,
-         m_lastMetrics.ticksPerSecond, spreadPts));
+         m_lastMetrics.ticksPerSecond, spreadPts, vol, scaleK));
       m_state=TMB_ST_ORDER;
-      TBOpenResult or_ = m_exec.OpenMarket(isBuy, vol, m_slMoney, m_tpMoney, m_tpMode);
+      TBOpenResult or_ = m_exec.OpenMarket(isBuy, vol, slEff, tpEff, m_tpMode);
       if(!or_.ok) { m_state=TMB_ST_WAITING; return; }
       m_ticket = or_.ticket;
       m_beDone = false;
       m_state = TMB_ST_OPEN;
       double estComm = m_cost.EstimateRoundTripCommission(vol);
       m_journal.OnOpen(m_ticket, symbol, (isBuy?1:-1), vol, or_.price, or_.sl, or_.tp,
-                       spreadPts, estComm, m_lastMetrics, nowServer);
+                       spreadPts, estComm, m_lastMetrics, nowServer, scaleK);
       m_risk.NotifyOpen(dayKey);
       m_log.Info(StringFormat("OPEN #%I64u %s %.2f @ %s SL=%s TP=%s", m_ticket, symbol, vol,
          DoubleToString(or_.price, m_sym.Digits()), DoubleToString(or_.sl, m_sym.Digits()),
