@@ -45,6 +45,7 @@ docs/                                     README(s), guides, research report
 | `CRiskManager` | Cooldown, max trades/day, consecutive-loss lock, daily-loss lock, abnormal-market cap |
 | `CTradeJournal` | Per-trade record (entry metrics, MFE/MAE, exit reason) + optional CSV |
 | `CStrategyController` | State machine + orchestration; position management **always runs first** on every tick |
+| `CMarketContextFilter` | Optional (off) candle veto: EMA trend alignment + ATR cap, closed bars only |
 
 State machine: `WAITING → SIGNAL → ORDER → OPEN → COST_COVERED → BE → TRAIL → (close) → COOLDOWN → WAITING`.
 Restart-safe: on init the controller re-attaches to its own (symbol+magic) position.

@@ -87,6 +87,40 @@ def trail_sell(current_sl, ask, trail_dist):
     if current_sl == 0 or new_sl < current_sl: return new_sl
     return current_sl
 
+def ema(values, period):
+    """Classic EMA; returns list (first value = SMA seed). Needs len>=period."""
+    if len(values) < period or period < 2: return []
+    k = 2.0 / (period + 1)
+    out = [sum(values[:period]) / period]
+    for v in values[period:]:
+        out.append(v * k + out[-1] * (1 - k))
+    return out
+
+def context_gate(closes, ma_period, use_trend, atr_vals, atr_cap,
+                 want_buy):
+    """Mirror of CMarketContextFilter direction gate.
+    closes: list incl. current forming bar; uses last CLOSED bar ([-2]).
+    atr_vals: ATR series in points (aligned with closes); uses [-2] too.
+    Returns (allowed, reason)."""
+    if not use_trend and atr_cap is None:
+        return True, "OK"
+    if len(closes) < ma_period + 1:
+        return False, "CTX_NO_DATA"
+    e = ema(closes[:-1], ma_period)  # exclude forming bar
+    if not e:
+        return False, "CTX_NO_DATA"
+    ema_val = e[-1]
+    c = closes[-2]
+    if atr_cap is not None and atr_vals is not None:
+        if len(atr_vals) < 2:
+            return False, "CTX_NO_DATA"
+        if atr_vals[-2] > atr_cap:
+            return False, "VOLATILITY"
+    if use_trend:
+        if want_buy and c <= ema_val: return False, "CONTEXT_FILTER"
+        if not want_buy and c >= ema_val: return False, "CONTEXT_FILTER"
+    return True, "OK"
+
 def risk_volume(equity, risk_pct, fixed_lot, sl_money_ref,
                 vol_min, vol_max, max_lot):
     """Mirror of CPositionSizer::ComputeRiskVolume.

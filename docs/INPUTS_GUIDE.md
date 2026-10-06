@@ -75,6 +75,25 @@ minimum, the signal is skipped (no trade). Fixed mode is exactly `k = 1`.
 Use the tester with real equity curves; commission estimates scale automatically
 with the larger volume via `EstimateRoundTripCommission`.
 
+## Context / volatility filter (EA v1.30+, all off by default)
+
+The tick stream stays the primary signal. When enabled, closed-bar candles add an
+extra veto (never a trigger). Reads use the last **closed** bar (no intra-bar repaint).
+
+| Input | Default | Meaning |
+|---|---|---|
+| `InpUseContextTrend` | false | `true` = BUY only above EMA, SELL only below EMA. |
+| `InpContextTimeframe` | H1 | Candle timeframe for context. |
+| `InpContextMAPeriod` | 50 | EMA period (≥ 2). |
+| `InpUseVolatilityFilter` | false | `true` = block entries while ATR > max. |
+| `InpATRPeriod` | 14 | ATR period (≥ 2). |
+| `InpMaxATRPoints` | 0.0 | Max ATR in points; must be > 0 when the vol filter is on. |
+
+Fail-safe: if indicator data is unavailable (handles invalid, history missing),
+entries are **blocked** with reason `CTX_NO_DATA` / `VOLATILITY` / `CONTEXT_FILTER`
+while management of open positions continues. Recommended test order: trend-only,
+then vol-cap-only, then both — compare against the unfiltered baseline in the CSV.
+
 ## Protection
 
 | Input | Default | Meaning |

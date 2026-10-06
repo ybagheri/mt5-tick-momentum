@@ -1,4 +1,4 @@
-# HANDOFF — Tick Momentum Burst EA v1.20 (2026-10-07)
+# HANDOFF — Tick Momentum Burst EA v1.30 (2026-10-07)
 
 ## Architecture
 Single EA `MQL5/Experts/TickMomentumBurstEA.mq5` + 15 `.mqh` modules under
@@ -20,6 +20,7 @@ equity × pct, all money targets scaled by k, price geometry unchanged.
 - `tests/test_simulation.py` — 8/8 PASS (integrated lifecycle: BUY/SELL TP, spread veto,
   crash SL, no-averaging under 34 bursts, cooldown, consec-loss lock, flat-market silence).
 - `tests/test_risk_sizing.py` — 9/9 PASS (risk volume/k, geometry invariance, caps, blocks).
+- `tests/test_context_filter.py` — 14/14 PASS (trend alignment, fail-safe, ATR cap, passthrough).
 - `scripts/static_check.py` — PASS.
 - **NOT done (environment): no MetaEditor compile, no Strategy Tester runs.**
   First action on a Windows MT5 terminal: F7 compile → Test A visual real-tick run.

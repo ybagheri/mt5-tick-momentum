@@ -17,6 +17,7 @@
 #include "TrailingManager.mqh"
 #include "RiskManager.mqh"
 #include "TradeJournal.mqh"
+#include "ContextFilter.mqh"
 #include "Logger.mqh"
 
 enum ENUM_TMB_STATE
@@ -50,6 +51,7 @@ private:
    CTrailingStopManager  m_trail;
    CRiskManager          m_risk;
    CTradeJournal         m_journal;
+   CMarketContextFilter  m_ctx;
    CLogger               m_log;
 
    //--- config (mirrors inputs)
@@ -66,6 +68,8 @@ private:
    long              m_magic; int m_dev; int m_maxPos;
    bool              m_commDoubled;
    bool              m_useRisk; double m_riskPct; double m_riskMaxLot;
+   bool              m_ctxTrend; ENUM_TIMEFRAMES m_ctxTF; int m_ctxMAPeriod;
+   bool              m_ctxVol; int m_ctxATRPeriod; double m_ctxMaxATR;
 
    ENUM_TMB_STATE    m_state;
    ulong             m_ticket;
@@ -87,7 +91,9 @@ public:
       bool useBE, double beBuf, bool useTrail, double trailMoney, int tpMode,
        int cooldown, int maxTradesDay, int maxConsecLoss, double maxDailyLoss,
        long magic, int dev, int maxPos, int logLevel,
-       bool useRisk, double riskPct, double riskMaxLot)
+       bool useRisk, double riskPct, double riskMaxLot,
+       bool ctxTrend, ENUM_TIMEFRAMES ctxTF, int ctxMAPeriod,
+       bool ctxVol, int ctxATRPeriod, double ctxMaxATR)
      {
       m_lot=lot; m_slMoney=slM; m_tpMoney=tpM; m_commPerLot=commPerLot; m_commDoubled=commDoubled;
       m_tickWindow=tickWindow; m_minRatio=minRatio; m_minMovePts=minMovePts; m_minTps=minTps;
@@ -96,6 +102,8 @@ public:
       m_cooldown=cooldown; m_maxTradesDay=maxTradesDay; m_maxConsecLoss=maxConsecLoss;
       m_maxDailyLoss=maxDailyLoss; m_magic=magic; m_dev=dev; m_maxPos=maxPos;
       m_useRisk=useRisk; m_riskPct=riskPct; m_riskMaxLot=riskMaxLot;
+      m_ctxTrend=ctxTrend; m_ctxTF=ctxTF; m_ctxMAPeriod=ctxMAPeriod;
+      m_ctxVol=ctxVol; m_ctxATRPeriod=ctxATRPeriod; m_ctxMaxATR=ctxMaxATR;
       m_log.Init((ENUM_TMB_LOG_LEVEL)logLevel, "TMB");
       return Validate();
      }
@@ -116,6 +124,12 @@ public:
          if(m_riskPct<=0 || m_riskPct>10.0) { m_log.Error("RiskPct must be in (0,10]"); return false; }
          if(m_riskMaxLot<=0) { m_log.Error("RiskMaxLot must be > 0"); return false; }
         }
+      if(m_ctxTrend && m_ctxMAPeriod<2) { m_log.Error("ContextMAPeriod must be >= 2"); return false; }
+      if(m_ctxVol)
+        {
+         if(m_ctxATRPeriod<2) { m_log.Error("ATRPeriod must be >= 2"); return false; }
+         if(m_ctxMaxATR<=0) { m_log.Error("MaxATRPoints must be > 0 when vol filter on"); return false; }
+        }
       return true;
      }
 
@@ -135,6 +149,9 @@ public:
       m_exec.Init(&m_sym, &m_math, &m_log, m_magic, m_dev);
       m_be.Init(&m_sym, &m_math, &m_cost, &m_log, m_useBE, m_beBuf, m_magic);
       m_trail.Init(&m_sym, &m_math, &m_cost, &m_log, m_useTrail, m_trailMoney, m_magic, true);
+      if(!m_ctx.Init(symbol, m_ctxTF, m_sym.Point(), m_ctxTrend, m_ctxMAPeriod,
+                     m_ctxVol, m_ctxATRPeriod, m_ctxMaxATR, &m_log))
+        { m_log.Error("Context filter init failed"); return false; }
       // risk + journal inited by EA (needs csv settings); do safe defaults here
       m_ticks.Backfill();
       ReattachToExistingPosition();
@@ -154,6 +171,8 @@ public:
       m_risk.Init(&m_log, maxTradesDay, maxConsecLoss, maxDailyLoss, cooldown);
       m_journal.Init(&m_log, csvEnabled, csvFile);
      }
+
+   void              Cleanup(void) { m_ctx.Cleanup(); }
 
    void              ReattachToExistingPosition(void)
      {
@@ -237,6 +256,20 @@ public:
          // m_log.Debug("Reject: " + sig.rejectReason);
          if(m_state!=TMB_ST_COOLDOWN) m_state=TMB_ST_WAITING;
          return;
+        }
+
+      // 3b) optional candle context (trend alignment / volatility cap)
+      if(m_ctx.IsActive())
+        {
+         bool wantBuy = (sig.signal==TMB_SIG_BUY);
+         string ctxReason="";
+         bool ctxOk = wantBuy ? m_ctx.BuyAllowed(ctxReason) : m_ctx.SellAllowed(ctxReason);
+         if(!ctxOk)
+           {
+            m_log.Debug("Context reject: " + ctxReason);
+            if(m_state!=TMB_ST_COOLDOWN) m_state=TMB_ST_WAITING;
+            return;
+           }
         }
 
       // 4) execute: fixed lot, or risk-scaled volume with k-scaled money targets

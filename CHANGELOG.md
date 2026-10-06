@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.30] — 2026-10-07 — Optional candle context / volatility filter
+### Added
+- `CMarketContextFilter`: closed-bar EMA trend alignment + ATR volatility cap,
+  all off by default; tick stream remains the primary signal, candles only veto.
+- Fail-safe block (`CTX_NO_DATA`) when indicator data is missing; handles released
+  in `OnDeinit`; param validation in `Configure`.
+- `tests/test_context_filter.py`: 14/14 green (alignment both sides, fail-safe,
+  ATR cap, disabled passthrough, vol-only mode).
+
 ## [1.20] — 2026-10-07 — Risk-based position sizing
 ### Added
 - `InpUseRiskSizing / InpRiskPercent / InpRiskMaxLot`: optional risk-% mode.

@@ -17,4 +17,4 @@
 - [ ] Next — Multi-symbol real-tick comparison (US30/US100/XAUUSD/EURUSD)
 - [ ] Next — OOS validation; publish results in RESEARCH_REPORT (profitable or not)
 - [x] Future — Risk-% position sizing extension point (`CPositionSizer`) — DONE v1.20
-- [ ] Future — Optional candle/volatility context filter (spec §1, off by default)
+- [x] Future — Optional candle/volatility context filter (spec §1, off by default) — DONE v1.30

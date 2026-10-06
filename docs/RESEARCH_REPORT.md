@@ -48,6 +48,15 @@ trade; (b) post-crash counter-bursts are legitimate SELL signals in the sim, whi
 correct behaviour but means loss streaks in real markets may interleave with
 counter-trend wins rather than clean SL sequences.
 
+## v1.30 addendum — context filter
+
+The optional candle module (`CMarketContextFilter`, default OFF) exists so the
+baseline tick hypothesis can be compared against trend-filtered and vol-capped
+variants in the Strategy Tester without touching core signal code. Falsification
+rule to apply per variant: if a filter halves the trade count without improving
+net expectancy or profit factor out-of-sample, it is complexity without edge —
+remove it rather than stacking more vetoes.
+
 ## Specification issues found and resolved
 
 1. **Commission ambiguity.** Spec's example ($6×0.01=$0.06) reads as a single charge,

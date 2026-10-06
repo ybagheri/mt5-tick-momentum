@@ -5,7 +5,7 @@
 //| Current-chart-symbol EA. Tick stream is the primary signal.      |
 //+------------------------------------------------------------------+
 #property copyright "Tick Momentum Research"
-#property version   "1.10"
+#property version   "1.30"
 #property strict
 #property description "Tick Momentum Burst EA: tick imbalance + displacement + tick rate."
 #property description "Broker tick behaviour only - NOT centralized order flow."
@@ -51,6 +51,14 @@ input double   InpBreakEvenBufferMoney = 0.02;      // Extra net profit target a
 input bool     InpEnableTrailing       = true;
 input double   InpTrailingDistanceMoney= 0.50;      // Trailing distance (account $)
 
+//--- Context (optional candle filter; tick stream stays primary)
+input bool     InpUseContextTrend      = false;     // BUY only above EMA / SELL only below EMA
+input ENUM_TIMEFRAMES InpContextTimeframe = PERIOD_H1; // Context timeframe
+input int      InpContextMAPeriod      = 50;        // EMA period (closed bars)
+input bool     InpUseVolatilityFilter  = false;     // Block entries while ATR > max
+input int      InpATRPeriod            = 14;        // ATR period
+input double   InpMaxATRPoints         = 0.0;       // Max ATR (points); required>0 when vol filter on
+
 //--- Protection
 input int      InpCooldownSeconds      = 5;
 input int      InpMaxTradesPerDay      = 50;
@@ -76,7 +84,9 @@ int OnInit()
       InpTrailingDistanceMoney, InpTPMode, InpCooldownSeconds, InpMaxTradesPerDay,
       InpMaxConsecutiveLosses, InpMaxDailyLossMoney, InpMagicNumber,
       InpDeviationPoints, InpMaxPositions, InpLogLevel,
-      InpUseRiskSizing, InpRiskPercent, InpRiskMaxLot))
+      InpUseRiskSizing, InpRiskPercent, InpRiskMaxLot,
+      InpUseContextTrend, InpContextTimeframe, InpContextMAPeriod,
+      InpUseVolatilityFilter, InpATRPeriod, InpMaxATRPoints))
      {
       Print("[TMB] Invalid configuration. Init failed.");
       return INIT_PARAMETERS_INCORRECT;
@@ -89,7 +99,7 @@ int OnInit()
    g_ctl.InitRiskJournal(g_ctl.LogPtr(), InpMaxTradesPerDay, InpMaxConsecutiveLosses,
       InpMaxDailyLossMoney, InpCooldownSeconds, InpEnableCSVJournal, InpCSVFile);
 
-   PrintFormat("[TMB] v1.10 started on %s magic=%I64d lot=%.2f SL=$%.2f TP=$%.2f win=%d ratio>=%.2f move>=%dpts tps>=%.1f spread<=%d BE=%s/%s trail=%s/%s TPmode=%d risk=%s/%.2f%%/max%.2f",
+   PrintFormat("[TMB] v1.30 started on %s magic=%I64d lot=%.2f SL=$%.2f TP=$%.2f win=%d ratio>=%.2f move>=%dpts tps>=%.1f spread<=%d BE=%s/%s trail=%s/%s TPmode=%d risk=%s/%.2f%%/max%.2f",
       _Symbol, InpMagicNumber, InpLotSize, InpSLMoney, InpTPMoney, InpTickWindow,
       InpMinimumDirectionalRatio, InpMinimumPriceMovePoints, InpMinimumTicksPerSecond,
       InpMaxSpreadPoints, (InpEnableBreakEven?"ON":"OFF"), DoubleToString(InpBreakEvenBufferMoney,2),
@@ -100,6 +110,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
+   g_ctl.Cleanup();
    PrintFormat("[TMB] Stopped. reason=%d", reason);
   }
 //+------------------------------------------------------------------+
