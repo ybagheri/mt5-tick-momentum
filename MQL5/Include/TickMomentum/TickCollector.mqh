@@ -62,7 +62,7 @@ public:
       // ticks are oldest->newest; feed in order
       for(int i=0; i<got; i++)
          PushTick(ticks[i].time_msc, ticks[i].bid, ticks[i].ask,
-                  ticks[i].last, ticks[i].volume, ticks[i].flags,
+                  ticks[i].last, (long)ticks[i].volume, (int)ticks[i].flags,
                   (int)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD));
       return got;
      }
@@ -100,7 +100,9 @@ public:
      {
       MqlTick tk;
       if(!SymbolInfoTick(m_symbol, tk)) return false;
-      PushTick(tk.time_msc, tk.bid, tk.ask, tk.last, tk.volume, tk.flags, tk.spread);
+      // NOTE: MqlTick has no spread field; read it from symbol properties.
+      int sp = (int)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
+      PushTick(tk.time_msc, tk.bid, tk.ask, tk.last, (long)tk.volume, (int)tk.flags, sp);
       return true;
      }
 
