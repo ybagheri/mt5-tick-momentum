@@ -38,20 +38,22 @@ public:
       return EstimateCommission(volume, sides);
      }
 
-   double            SpreadPriceDistance(double bid, double ask)
-     { return MathMax(0.0, ask - bid); }
+double            SpreadPriceDistance(double bid, double ask)
+      { return MathMax(0.0, ask - bid); }
 
+   //--- Spread in points, from a live tick
    int               SpreadPoints(double bid, double ask)
-     {
-      if(m_sym==NULL) return 0;
-      double d = SpreadPriceDistance(bid, ask);
-      return (int)MathRound(d / m_sym.Point());
+      {
+      if(m_sym==NULL || m_sym.Point()<=0) return 0;
+      return (int)MathRound(SpreadPriceDistance(bid, ask) / m_sym.Point());
      }
 
+   //--- What one spread crossing costs in account currency (entry side only).
+   //--- Round-trip cost is 2x this; use EstimateRoundTripCommission for commission.
    double            SpreadCostMoney(double bid, double ask, double volume)
-     {
+      {
       if(m_math==NULL) return 0.0;
-      return m_math.PriceDistanceToMoney(SpreadPriceDistance(bid,ask), volume);
+      return m_math.PriceDistanceToMoney(SpreadPriceDistance(bid, ask), volume);
      }
 
    //--- True break-even exit price (the price at which NET ~= +buffer).

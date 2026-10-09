@@ -9,12 +9,17 @@
 enum ENUM_TMB_BURST_DIR { TMB_BURST_NONE=0, TMB_BURST_BULL=1, TMB_BURST_BEAR=-1 };
 
 struct TBBurstResult
-  {
+   {
    bool              isBurst;
    ENUM_TMB_BURST_DIR dir;
    string            reason;   // rejection explanation
    TBMetrics         metrics;
-  };
+
+   void              Reset(void)
+      {
+       isBurst=false; dir=TMB_BURST_NONE; reason=""; ZeroMemory(metrics);
+      }
+   };
 
 class CMomentumDetector
   {
@@ -39,7 +44,7 @@ public:
    TBBurstResult     Evaluate(TBMetrics &m)
      {
       TBBurstResult r;
-      ZeroMemory(r);
+      r.Reset();
       r.metrics = m;
       r.isBurst=false; r.dir=TMB_BURST_NONE;
       if(!m.ready) { r.reason="WARMUP"; return r; }

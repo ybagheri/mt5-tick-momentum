@@ -5,12 +5,13 @@
 #define __TMB_EXECUTOR_MQH__
 
 #include <Trade\Trade.mqh>
+#include "Enums.mqh"
 #include "SymbolInfoCache.mqh"
 #include "MoneyMath.mqh"
 #include "Logger.mqh"
 
 struct TBOpenResult
-  {
+   {
    bool              ok;
    ulong             ticket;      // position ticket (POSITION_TICKET)
    ulong             deal;        // opening deal ticket
@@ -19,7 +20,13 @@ struct TBOpenResult
    double            tp;
    int               retcode;
    string            message;
-  };
+
+   void              Reset(void)
+      {
+       ok=false; ticket=0; deal=0; price=0; sl=0; tp=0;
+       retcode=0; message="";
+      }
+   };
 
 class CTradeExecutor
   {
@@ -44,12 +51,10 @@ public:
       m_trade.SetAsyncMode(false);
      }
 
-   void              SetLogging(CLogger *log) { m_log=log; }
-
-   TBOpenResult      OpenMarket(bool isBuy, double volume,
-                               double slMoney, double tpMoney, int tpMode /*0 fixed 1 trailing-only 2 hybrid*/)
-     {
-      TBOpenResult r; ZeroMemory(r);
+TBOpenResult      OpenMarket(bool isBuy, double volume,
+                               double slMoney, double tpMoney, ENUM_TMB_TP_MODE tpMode)
+      {
+      TBOpenResult r; r.Reset();
       // volume normalized by caller
       MqlTick tk;
       if(!SymbolInfoTick(m_sym.Symbol(), tk)) { r.message="NO_TICK"; return r; }
@@ -57,7 +62,7 @@ public:
       double slDist = m_math.MoneyToPriceDistance(slMoney, volume);
       slDist = m_math.EnforceMinStopDistance(slDist);
       double tpDist = 0.0;
-      bool placeTP = (tpMode==0 || tpMode==2);
+      bool placeTP = (tpMode==TMB_TP_FIXED || tpMode==TMB_TP_HYBRID);
       if(placeTP && tpMoney > 0)
         {
          tpDist = m_math.MoneyToPriceDistance(tpMoney, volume);
@@ -144,8 +149,16 @@ private:
         }
       sl = m_math.SnapToTick(m_sym.NormalizePrice(sl));
       if(tp>0) tp = m_math.SnapToTick(m_sym.NormalizePrice(tp));
-      // keep existing TP if broker already set one and re-anchor equals it (avoid extra modify)
-      m_trade.PositionModify(ticket, sl, tp);
+      //--- Skip the extra modify when the re-anchored levels already match the
+      //--- position (avoids needless requests, retcodes and spread exposure).
+      if(!PositionSelectByTicket(ticket)) return;
+      double curSL = PositionGetDouble(POSITION_SL);
+      double curTP = PositionGetDouble(POSITION_TP);
+      double eps = m_sym.Point() * 0.5;
+      if(MathAbs(curSL-sl) <= eps && MathAbs(curTP-tp) <= eps) return;
+      if(!m_trade.PositionModify(ticket, sl, tp) && m_log!=NULL)
+         m_log.Warning(StringFormat("Re-anchor modify failed #%I64u ret=%d",
+                                     ticket, m_trade.ResultRetcode()));
      }
   };
 

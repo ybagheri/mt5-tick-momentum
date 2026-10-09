@@ -13,7 +13,7 @@ tradable momentum edge on CFD symbols (US30, US100, US500, XAUUSD, EURUSD, …).
 
 ## Status
 
-Research implementation, v1.00. Defaults are **initial research values, not optimized**.
+Research implementation, v1.40. Defaults are **initial research values, not optimized**.
 No profitability is claimed. See `docs/RESEARCH_REPORT.md`.
 
 ## Layout
@@ -21,9 +21,9 @@ No profitability is claimed. See `docs/RESEARCH_REPORT.md`.
 ```text
 MQL5/Experts/TickMomentumBurstEA.mq5      main EA (inputs, OnInit/OnTick/OnTradeTransaction)
 MQL5/Include/TickMomentum/*.mqh           OOP modules (see Architecture below)
-tests/mirror.py, tests/test_logic.py      Python mirror + unit tests (23 green, run on Linux)
+tests/mirror.py, tests/test_logic.py      Python mirror + unit tests (40 green, run on Linux)
 tests/test_simulation.py                Tick-for-tick lifecycle simulation (8 scenarios green)
-scripts/static_check.py                   MQL5 sanity checker (brace balance, safety tokens)
+scripts/static_check.py                   MQL5 sanity checker (includes, guards, wiring, safety)
 docs/                                     README(s), guides, research report
 ```
 
@@ -43,9 +43,10 @@ docs/                                     README(s), guides, research report
 | `CBreakEvenManager` | Moves SL to entry ± (round-trip commission + buffer) once covered; never fakes BE |
 | `CTrailingStopManager` | Tightens only (BUY↑ / SELL↓), respects stops level, requires BE first |
 | `CRiskManager` | Cooldown, max trades/day, consecutive-loss lock, daily-loss lock, abnormal-market cap |
-| `CTradeJournal` | Per-trade record (entry metrics, MFE/MAE, exit reason) + optional CSV |
+| `CTradeJournal` | Per-trade record (entry metrics, MFE/MAE, exit reason) + optional CSV (append-safe) |
 | `CStrategyController` | State machine + orchestration; position management **always runs first** on every tick |
 | `CMarketContextFilter` | Optional (off) candle veto: EMA trend alignment + ATR cap, closed bars only |
+| `Enums.mqh` | Shared state / TP-mode enumerations |
 
 State machine: `WAITING → SIGNAL → ORDER → OPEN → COST_COVERED → BE → TRAIL → (close) → COOLDOWN → WAITING`.
 Restart-safe: on init the controller re-attaches to its own (symbol+magic) position.
@@ -64,8 +65,16 @@ Restart-safe: on init the controller re-attaches to its own (symbol+magic) posit
 - **Actual** is read from deal history (`DEAL_COMMISSION`, both legs) when the trade closes
   and stored in the journal. The two are never mixed.
 
+## Risk accounting
+
+A trade is counted once, on open. Closing updates daily P/L, the loss streak and the
+cooldown. Net P/L always comes from deal history (both commission legs), never from an
+estimate, so a repeated close callback cannot inflate the daily trade cap or hand out a
+second cooldown.
+
 ## Safety
 
-No martingale / grid / averaging / recovery multipliers. Default max 1 position.
-Spread filter, cooldown, daily-loss lock, consecutive-loss lock. Manages only its own
-symbol+magic positions. See `docs/INPUTS_GUIDE.md` and `HANDOFF.md`.
+No martingale / grid / averaging / recovery multipliers. Exactly 1 position (any other
+`InpMaxPositions` fails init). Spread filter, cooldown, daily-loss lock,
+consecutive-loss lock, full-window metrics. Manages only its own symbol+magic
+positions. See `docs/INPUTS_GUIDE.md` and `HANDOFF.md`.

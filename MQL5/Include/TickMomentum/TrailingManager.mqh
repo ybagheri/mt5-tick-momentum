@@ -48,6 +48,7 @@ public:
    bool              Manage(ulong ticket, bool breakEvenDone)
      {
       if(!m_enabled) return false;
+      if(!m_sym.IsValid()) return false;
       if(m_requireBreakEvenFirst && !breakEvenDone) return false;
       if(!PositionSelectByTicket(ticket)) return false;
       if(PositionGetString(POSITION_SYMBOL)!=m_sym.Symbol()) return false;
@@ -61,6 +62,7 @@ public:
       if(!SymbolInfoTick(m_sym.Symbol(), tk)) return false;
 
       double trailDist = m_math.MoneyToPriceDistance(ActiveDistance(), vol);
+      if(trailDist <= 0) return false;
       trailDist = m_math.EnforceMinStopDistance(trailDist);
       double minGap = m_math.StopsLevelPrice();
       bool moved=false;

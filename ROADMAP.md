@@ -8,7 +8,7 @@
 - [x] Phase 6 — Trailing stop (tighten-only, BE-first, broker constraints)
 - [x] Phase 7 — Risk management (cooldown, day/consec/daily locks, abnormal veto)
 - [x] Phase 8 — Logging & research (levels, CSV journal, MFE/MAE, exit reasons)
-- [x] Phase 9 — Tester validation (Linux: 23 logic tests + static checks green;
+- [x] Phase 9 — Tester validation (Linux: 40 logic tests + static checks green;
       MT5 compile + real-tick runs pending on user terminal)
 - [x] Phase 10 — Optimization readiness (TP modes, small param set, OOS protocol)
 - [x] Next-phase (Linux) — lifecycle simulation harness `tests/test_simulation.py`, 8/8 green
@@ -18,3 +18,7 @@
 - [ ] Next — OOS validation; publish results in RESEARCH_REPORT (profitable or not)
 - [x] Future — Risk-% position sizing extension point (`CPositionSizer`) — DONE v1.20
 - [x] Future — Optional candle/volatility context filter (spec §1, off by default) — DONE v1.30
+- [x] Correctness pass — trade double-counting, phantom risk reset, partial-window
+      entries, exit-reason classification, journal truncation, duplicate ticks,
+      sub-minimum risk volumes — DONE v1.40 (re-run all backtests: behaviour changed)
+- [ ] Next — Re-run BACKTEST_GUIDE battery on v1.40 and discard v1.30-era results

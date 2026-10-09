@@ -15,7 +15,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from mirror import (money_to_distance, estimate_commission, be_price_buy,
                     be_price_sell, dir_ratio, is_burst, signal_gate,
-                    Metrics, RiskMirror)
+                    Metrics, RiskMirror, classify_exit, metrics_ready)
 
 # --- synthetic symbol: point=0.01, tick 0.01 worth $1.00 per 1.0 lot ---
 POINT = 0.01
@@ -52,7 +52,7 @@ class SimEA:
 
     def metrics(self):
         w = self.buf[-WIN:]
-        if len(w) < WIN: return None
+        if len(w) < 2: return None
         up = sum(1 for _, _, d in w[1:] if d == 1)
         down = sum(1 for _, _, d in w[1:] if d == -1)
         disp = w[-1][1] - w[0][1]
@@ -86,6 +86,9 @@ class SimEA:
         m = self.metrics()
         if m is None:
             self.rejects.append("WARMUP"); return
+        # metrics readiness now requires a FULL window (parity with CMarketMetrics)
+        if not metrics_ready(len(self.buf[-WIN:]), WIN):
+            self.rejects.append("WARMUP"); return
         ok, why = is_burst(m, 0.70, 10, 1.0)
         bdir = m.disp_sign if ok else 0
         sig, reason = signal_gate(ok, bdir, spread_pts, 100, 0, 1,
@@ -97,10 +100,12 @@ class SimEA:
         entry = ask if is_buy else bid
         sl = entry - self.sl_d if is_buy else entry + self.sl_d
         tp = entry + self.tp_d if is_buy else entry - self.tp_d
+        self.risk.notify_open()          # counted here, never again on close
         be = (be_price_buy(entry, VOL, TS, TV, COMM, BUF) if is_buy
               else be_price_sell(entry, VOL, TS, TV, COMM, BUF))
         self.pos = dict(is_buy=is_buy, entry=entry, sl=sl, tp=tp, be=be,
-                        be_done=False, mfe=entry, open_t=self.now_s)
+                        be_done=False, trail_active=False, mfe=entry,
+                        open_t=self.now_s)
 
     def _manage(self, bid, ask):
         p = self.pos
@@ -120,7 +125,8 @@ class SimEA:
                 p['be_done'] = True
             if p.get('be_done'):
                 ns = px - self.trail_d
-                if ns > p['sl'] and ns >= p['be']: p['sl'] = ns
+                if ns > p['sl'] and ns >= p['be']:
+                    p['sl'] = ns; p['trail_active'] = True
         else:
             if px >= p['sl'] - 1e-12:
                 self._close(px, "BREAK_EVEN" if abs(p['sl'] - p['be']) < 1e-9
@@ -133,16 +139,21 @@ class SimEA:
                 p['be_done'] = True
             if p.get('be_done'):
                 ns = px + self.trail_d
-                if (p['sl'] == 0 or ns < p['sl']) and ns <= p['be']: p['sl'] = ns
+                if (p['sl'] == 0 or ns < p['sl']) and ns <= p['be']:
+                    p['sl'] = ns; p['trail_active'] = True
 
     def _close(self, px, reason):
         p = self.pos
         gross = ((px - p['entry']) if p['is_buy'] else (p['entry'] - px)) / TS * TV * VOL
         net = gross - self.rt_comm  # actual == estimate in sim
+        # reason derived from the record, exactly like CTradeJournal::ClassifyExit
+        reason = classify_exit(px, p['tp'], p['sl'], p['be_done'],
+                               p['trail_active'], net, TS, p['is_buy'])
         self.trades.append(dict(dir="BUY" if p['is_buy'] else "SELL",
                                 entry=p['entry'], exit=px, gross=round(gross, 4),
                                 net=round(net, 4), reason=reason,
                                 hold=self.now_s - p['open_t']))
+        # trade counted once (on open); close only updates P/L, streak, cooldown
         self.risk.notify_close(self.now_s, net)
         self.pos = None
 

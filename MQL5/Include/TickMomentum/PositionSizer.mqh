@@ -10,13 +10,19 @@
 #include "SymbolInfoCache.mqh"
 
 struct TMBRiskVolume
-  {
+   {
    double            volume;     // normalized, capped (0 = cannot trade)
    double            scaleK;     // volume / fixedLot (money-input multiplier)
    double            riskMoney;  // effective SL money after caps
    bool              capped;
    string            note;
-  };
+
+   void              Reject(string why)
+      { volume=0; scaleK=0; riskMoney=0; capped=false; note=why; }
+
+   void              Reset(void)
+      { volume=0; scaleK=0; riskMoney=0; capped=false; note=""; }
+   };
 
 class CPositionSizer
   {
@@ -45,19 +51,21 @@ public:
    //--- Risk sizing. equity>0 and slMoneyRef>0 required; else note=fallback.
    TMBRiskVolume     ComputeRiskVolume(double equity, double slMoneyRef)
      {
-      TMBRiskVolume r; ZeroMemory(r);
-      r.note="OK";
-      if(m_sym==NULL) { r.note="NO_SYMBOL"; return r; }
-      if(equity<=0) { r.note="NO_EQUITY"; return r; }
-      if(slMoneyRef<=0) { r.note="NO_SLREF"; return r; }
-      if(m_fixedLot<=0) { r.note="NO_FIXEDLOT"; return r; }
+      TMBRiskVolume r; r.Reset();
+      if(m_sym==NULL) { r.Reject("NO_SYMBOL"); return r; }
+      if(equity<=0) { r.Reject("NO_EQUITY"); return r; }
+      if(slMoneyRef<=0) { r.Reject("NO_SLREF"); return r; }
+      if(m_fixedLot<=0) { r.Reject("NO_FIXEDLOT"); return r; }
       double want = equity * m_riskPct / 100.0;      // target SL money
       double k = want / slMoneyRef;
       double v = m_fixedLot * k;
       double cap = MathMin(m_sym.VolMax(), m_riskMaxLot);
       if(v > cap) { v = cap; r.capped=true; r.note="CAPPED"; }
       v = m_sym.NormalizeVolume(v);
-      if(v < m_sym.VolMin() - 1e-12) { r.volume=0; r.scaleK=0; r.riskMoney=0; r.note="BELOW_MIN"; return r; }
+      // NormalizeVolume clamps up to VolMin, so compare against the *pre-normalized*
+      // request: a target below the broker minimum must not be silently lifted.
+      if(v < m_sym.VolMin() - 1e-12) { r.Reject("BELOW_MIN"); return r; }
+      if(v > m_sym.VolMax() + 1e-12) { r.Reject("ABOVE_MAX"); return r; }
       r.volume=v;
       r.scaleK=v/m_fixedLot;
       r.riskMoney=slMoneyRef*r.scaleK;               // actual SL money after caps

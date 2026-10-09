@@ -38,30 +38,24 @@ public:
       return distance / ts * tv * volume;
      }
 
-   double            PointsToPrice(int points)
-     { return (m_sym==NULL ? 0.0 : (double)points * m_sym.Point()); }
-
-   int               PriceToPoints(double distance)
-     {
-      if(m_sym==NULL || m_sym.Point()<=0) return 0;
-      return (int)MathRound(distance / m_sym.Point());
-     }
-
-   //--- enforce broker stop distance; returns adjusted distance
-   double            EnforceMinStopDistance(double distance)
-     {
-      if(m_sym==NULL) return distance;
-      double minDist = StopsLevelPrice();
-      // add one point safety margin
-      minDist += m_sym.Point();
-      if(distance < minDist) distance = minDist;
-      return distance;
-     }
-
-   double            StopsLevelPrice(void)
-     {
+//--- Broker minimum SL/TP distance in price, WITH one point safety margin.
+   //--- Single source of truth: every SL/TP gap check must use this value.
+   double            StopsLevelPrice(void) const
+      {
       if(m_sym==NULL) return 0.0;
-      return (double)m_sym.StopsLevelPoints() * m_sym.Point() + m_sym.Point();
+      return ((double)m_sym.StopsLevelPoints() + 1.0) * m_sym.Point();
+     }
+
+   double            FreezeLevelPrice(void) const
+      {
+      if(m_sym==NULL) return 0.0;
+      return ((double)m_sym.FreezeLevelPoints() + 1.0) * m_sym.Point();
+     }
+
+   double            EnforceMinStopDistance(double distance) const
+      {
+      double minDist = StopsLevelPrice();
+      return (distance < minDist ? minDist : distance);
      }
 
    double            SnapToTick(double price)

@@ -57,16 +57,36 @@ def signal_gate(burst_ok, burst_dir, spread_pts, max_spread, my_pos, max_pos, co
     return ("BUY" if burst_dir > 0 else "SELL"), "OK"
 
 class RiskMirror:
-    def __init__(self, max_trades_day=50, max_consec=5, max_daily_loss=10.0, cooldown=5):
+    """Mirror of CRiskManager.
+
+    trades_today is counted on OPEN only (never again on close), so a trade is
+    counted exactly once even if the close callback is seen twice.
+    """
+    def __init__(self, max_trades_day=50, max_consec=5, max_daily_loss=10.0,
+                 cooldown=5, reset_consec_on_new_day=True):
         self.max_trades_day=max_trades_day; self.max_consec=max_consec
         self.max_daily_loss=max_daily_loss; self.cooldown=cooldown
-        self.last_close=None; self.trades_today=0; self.consec=0
+        self.reset_consec_on_new_day=reset_consec_on_new_day
+        self.last_close=None; self.day_key=None; self.trades_today=0; self.consec=0
         self.daily_net=0.0; self.locked=False; self.reason=""
+    def on_new_day(self, key):
+        if self.day_key is not None and key == self.day_key: return
+        self.day_key=key; self.trades_today=0; self.daily_net=0.0
+        if self.reset_consec_on_new_day: self.consec=0
+        if self.reason in ("DAILY_LOSS", "MAX_TRADES"):
+            self.locked=False; self.reason=""
+        elif self.reason=="CONSEC_LOSS" and self.reset_consec_on_new_day:
+            self.locked=False; self.reason=""
     def in_cooldown(self, now):
         if self.last_close is None: return False
         return (now - self.last_close) < self.cooldown
-    def notify_close(self, now, net):
-        self.last_close=now; self.trades_today+=1; self.daily_net+=net
+    def notify_open(self, day_key=None):
+        if day_key is not None: self.on_new_day(day_key)
+        self.trades_today+=1
+        self._eval()
+    def notify_close(self, now, net, day_key=None):
+        if day_key is not None: self.on_new_day(day_key)
+        self.last_close=now; self.daily_net+=net
         self.consec = self.consec+1 if net<0 else 0
         self._eval()
     def _eval(self):
@@ -76,6 +96,28 @@ class RiskMirror:
             self.locked=True; self.reason="CONSEC_LOSS"
         if self.max_daily_loss>0 and self.daily_net<=-self.max_daily_loss:
             self.locked=True; self.reason="DAILY_LOSS"
+
+def classify_exit(exit_price, initial_tp, last_sl, be_done, trail_active,
+                  net_profit, tick_size, is_buy=True, tol_ticks=3):
+    """Mirror of CTradeJournal::ClassifyExit.
+    Order matters: a filled TP wins, then trailing, then BE, then plain SL.
+    TP/SL are matched DIRECTIONALLY: a real TP fill is at or beyond the TP in the
+    favourable direction, which absorbs tick granularity and gap-through fills."""
+    tol = (tick_size * tol_ticks) if tick_size else 0.0
+    if initial_tp:
+        if (exit_price >= initial_tp - tol) if is_buy else (exit_price <= initial_tp + tol):
+            return "TAKE_PROFIT"
+    if trail_active: return "TRAILING_STOP"
+    if be_done: return "BREAK_EVEN"
+    if last_sl:
+        if (exit_price <= last_sl + tol) if is_buy else (exit_price >= last_sl - tol):
+            return "STOP_LOSS"
+    return "TRAILING_STOP" if net_profit > 0 else "STOP_LOSS"
+
+def metrics_ready(count, window, min_window=None):
+    """Mirror of CMarketMetrics::Compute readiness: a PARTIAL window never counts."""
+    need = window if min_window is None else min_window
+    return count >= 2 and count >= need
 
 def trail_buy(current_sl, bid, trail_dist):
     new_sl = bid - trail_dist

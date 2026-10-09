@@ -11,18 +11,22 @@ No live or Strategy-Tester market runs were possible in this Linux build environ
 
 ## What was built to answer it
 
-Deterministic, fully-instrumented EA (v1.00): every entry carries its tick metrics
+Deterministic, fully-instrumented EA (currently v1.40): every entry carries its tick metrics
 (ratio, displacement, tick-rate) into the CSV journal together with spread, estimated
 vs actual commission, MFE/MAE, holding time and exit reason — so expectancy can be
 attributed to signal quality vs cost drag.
 
-## Logic-level evidence (Linux mirror + static checks, 2026-10-06)
+## Logic-level evidence (Linux mirror + static checks, updated 2026-10-09)
 
-- `tests/test_logic.py`: **23/23 pass** — money↔distance round-trip, BE symmetry
+- `tests/test_logic.py`: **40/40 pass** — money↔distance round-trip, BE symmetry
   (BUY/SELL mirror to <1e-9), cost-covered trigger ≡ BE gap, spread block, trailing
-  monotonicity both sides, cooldown/daily-lock, spec-dependent distances, burst gates.
-- `scripts/static_check.py`: **pass** — balanced syntax, required handlers, magic+symbol
-  filtering, no martingale/grid patterns, BE asymmetry, trailing-only-tightens markers.
+  monotonicity both sides, cooldown/daily-lock, spec-dependent distances, burst gates,
+  single-count trade accounting, day rollover releasing locks, exit-reason ordering
+  (TP outranks trailing/BE, both directions), full-window metric readiness.
+- `scripts/static_check.py`: **pass** — balanced syntax, resolving include graph,
+  unique include guards, required handlers, magic+symbol filtering, no
+  martingale/grid patterns (per-line), BE asymmetry, trailing-only-tightens markers,
+  every input wired into `TMBConfig`, no `ZeroMemory` on string-bearing structs.
 
 ## Lifecycle simulation (Linux, 2026-10-07 — "next phase" functional verification)
 
@@ -57,6 +61,28 @@ rule to apply per variant: if a filter halves the trade count without improving
 net expectancy or profit factor out-of-sample, it is complexity without edge —
 remove it rather than stacking more vetoes.
 
+## v1.40 addendum — measurement validity corrections
+
+A code review found defects that would have **biased any backtest** rather than
+merely being untidy. These change results, so results recorded against v1.30 or
+earlier must be re-run:
+
+| Defect | Effect on measurement |
+|---|---|
+| Trades counted twice per day | `InpMaxTradesPerDay` capped at half its value; loss/day statistics skewed |
+| Close without journal record reset risk state | Phantom breakeven cleared loss streaks → overstated resilience after losing runs |
+| Entries allowed on a partial tick window | Early-window signals with unstable ratio/displacement were traded |
+| Exit reason derived only from the BE flag | TP fills after BE were labelled `TRAILING_STOP` → per-exit-reason expectancy was wrong |
+| Journal CSV truncated on init | Restarts destroyed prior history; short runs looked like complete samples |
+| Duplicate ticks in the window | Inflated tick counts, distorted tick-rate and displacement |
+
+Corrected behaviour: a trade counts once on open; net P/L always comes from deal
+history; metrics require a full window; exit reason uses the placed TP / last SL /
+BE / trailing state with directional matching; the CSV appends; duplicate ticks are
+ignored for signals. A consecutive-loss lock now clears on a new server day
+(`InpResetConsecOnNewDay`), which lengthens sample availability — decide before
+comparing against older runs.
+
 ## Specification issues found and resolved
 
 1. **Commission ambiguity.** Spec's example ($6×0.01=$0.06) reads as a single charge,
@@ -66,9 +92,10 @@ remove it rather than stacking more vetoes.
 2. **SL=$1 gross vs net.** A $1 price-move stop costs ≈$1 + spread + commission net.
    Documented as gross; journal reports net so expectancy is honest.
 3. **TP-mode gap.** `TRAILING_ONLY` with trailing disabled is now an init error.
-4. **Exit-reason granularity.** MT5 reports generic stop-outs; SL vs BE vs TRAIL is
-   disambiguated via controller state (BE-done flag) + journal SL snapshot — heuristic,
-   documented as such.
+4. **Exit-reason granularity.** MT5 reports generic stop-outs. Since v1.40 the reason
+   is derived from the trade record: placed TP (directional match), then trailing, then
+   BE, then plain SL. Remaining gap: a **manual** close still records as `STOP_LOSS`,
+   and a position carried across an EA restart has no journal record to classify.
 5. **Mid-price classification.** `Mid=(Bid+Ask)/2` per spec; spread changes alone can
    flip classification. Documented limitation; spread filter mitigates.
 

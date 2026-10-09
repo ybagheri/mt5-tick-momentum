@@ -45,6 +45,7 @@ public:
    bool              Manage(ulong ticket)
      {
       if(!m_enabled) return false;
+      if(!m_sym.IsValid()) return false;
       if(!PositionSelectByTicket(ticket)) return false;
       if(PositionGetString(POSITION_SYMBOL)!=m_sym.Symbol()) return false;
       if(PositionGetInteger(POSITION_MAGIC)!=m_magic) return false;
@@ -57,14 +58,16 @@ public:
       if(!SymbolInfoTick(m_sym.Symbol(), tk)) return false;
 
       double buf = ActiveBuffer();
-      double bePrice = isBuy ? m_cost.BreakEvenPriceBuy(entry, vol, buf)
-                             : m_cost.BreakEvenPriceSell(entry, vol, buf);
-      //--- trigger: favourable move covers costs+buffer
       double reqDist = m_cost.RequiredFavourableDistance(vol, buf);
+      if(reqDist <= 0) return false;                 // cost model unusable: never fake BE
+      //--- trigger: favourable move covers costs+buffer
       bool covered;
       if(isBuy) covered = (tk.bid >= entry + reqDist - 1e-12);
       else      covered = (tk.ask <= entry - reqDist + 1e-12);
       if(!covered) return false;
+
+      double bePrice = isBuy ? m_cost.BreakEvenPriceBuy(entry, vol, buf)
+                             : m_cost.BreakEvenPriceSell(entry, vol, buf);
 
       //--- never move SL backwards; BE must improve protection
       bool needMove = false;

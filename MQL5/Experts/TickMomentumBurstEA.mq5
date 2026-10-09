@@ -5,7 +5,7 @@
 //| Current-chart-symbol EA. Tick stream is the primary signal.      |
 //+------------------------------------------------------------------+
 #property copyright "Tick Momentum Research"
-#property version   "1.30"
+#property version   "1.40"
 #property strict
 #property description "Tick Momentum Burst EA: tick imbalance + displacement + tick rate."
 #property description "Broker tick behaviour only - NOT centralized order flow."
@@ -19,7 +19,7 @@ input double   InpSLMoney              = 1.0;       // Initial SL (account $)
 input double   InpTPMoney              = 2.0;       // Initial TP (account $)
 input long     InpMagicNumber          = 26061001;  // Magic number
 input int      InpDeviationPoints      = 20;        // Max slippage (points)
-input int      InpMaxPositions         = 1;         // Max simultaneous strategy positions
+input int      InpMaxPositions         = 1;         // Must be 1 (single-position design)
 input int      InpTPMode               = 0;         // TP mode: 0=FIXED 1=TRAILING_ONLY 2=HYBRID
 
 //--- Risk-based sizing (off by default; scales volume so SL money = equity * pct)
@@ -64,29 +64,46 @@ input int      InpCooldownSeconds      = 5;
 input int      InpMaxTradesPerDay      = 50;
 input int      InpMaxConsecutiveLosses = 5;
 input double   InpMaxDailyLossMoney    = 10.0;
+input bool     InpResetConsecOnNewDay  = true;      // Clear loss streak + lock on a new server day
 
 //--- Logging / journal
 input int      InpLogLevel             = 3;         // 0=OFF 1=ERR 2=WARN 3=INFO 4=DEBUG
 input bool     InpEnableCSVJournal     = true;
 input string   InpCSVFile              = "TickMomentumJournal.csv";
 
+#define EA_VERSION "1.40"
+
 CStrategyController g_ctl;
-datetime            g_lastBarWarn = 0;
 
 //+------------------------------------------------------------------+
 int OnInit()
   {
-   if(!g_ctl.Configure(InpLotSize, InpSLMoney, InpTPMoney, InpCommissionPerLot,
-      InpCommissionDoubledRT, InpTickWindow, InpMinimumDirectionalRatio,
-      InpMinimumPriceMovePoints, InpMinimumTicksPerSecond, InpMaxSpreadPoints,
-      InpMaximumTicksPerSecond, InpMaximumDisplacementPoints, InpMaximumWindowSeconds,
-      InpEnableBreakEven, InpBreakEvenBufferMoney, InpEnableTrailing,
-      InpTrailingDistanceMoney, InpTPMode, InpCooldownSeconds, InpMaxTradesPerDay,
-      InpMaxConsecutiveLosses, InpMaxDailyLossMoney, InpMagicNumber,
-      InpDeviationPoints, InpMaxPositions, InpLogLevel,
-      InpUseRiskSizing, InpRiskPercent, InpRiskMaxLot,
-      InpUseContextTrend, InpContextTimeframe, InpContextMAPeriod,
-      InpUseVolatilityFilter, InpATRPeriod, InpMaxATRPoints))
+   TMBConfig cfg;
+   cfg.SetDefaults();
+   cfg.lot=InpLotSize; cfg.slMoney=InpSLMoney; cfg.tpMoney=InpTPMoney;
+   cfg.magic=InpMagicNumber; cfg.dev=InpDeviationPoints; cfg.maxPositions=InpMaxPositions;
+   cfg.tpMode=(ENUM_TMB_TP_MODE)InpTPMode;
+   cfg.commissionPerLot=InpCommissionPerLot; cfg.commissionDoubled=InpCommissionDoubledRT;
+   cfg.tickWindow=InpTickWindow; cfg.minRatio=InpMinimumDirectionalRatio;
+   cfg.minMovePoints=InpMinimumPriceMovePoints;
+   cfg.minTicksPerSec=InpMinimumTicksPerSecond; cfg.maxTicksPerSec=InpMaximumTicksPerSecond;
+   cfg.maxDispPoints=InpMaximumDisplacementPoints; cfg.maxWindowSec=InpMaximumWindowSeconds;
+   cfg.maxSpreadPoints=InpMaxSpreadPoints;
+   cfg.useBreakEven=InpEnableBreakEven; cfg.beBufferMoney=InpBreakEvenBufferMoney;
+   cfg.useTrailing=InpEnableTrailing; cfg.trailDistanceMoney=InpTrailingDistanceMoney;
+   cfg.cooldownSec=InpCooldownSeconds; cfg.maxTradesPerDay=InpMaxTradesPerDay;
+   cfg.maxConsecutiveLosses=InpMaxConsecutiveLosses;
+   cfg.maxDailyLossMoney=InpMaxDailyLossMoney;
+   cfg.resetConsecOnNewDay=InpResetConsecOnNewDay;
+   cfg.useRiskSizing=InpUseRiskSizing; cfg.riskPercent=InpRiskPercent;
+   cfg.riskMaxLot=InpRiskMaxLot;
+   cfg.ctxTrend=InpUseContextTrend; cfg.ctxTF=InpContextTimeframe;
+   cfg.ctxMAPeriod=InpContextMAPeriod;
+   cfg.ctxVolatility=InpUseVolatilityFilter; cfg.ctxATRPeriod=InpATRPeriod;
+   cfg.ctxMaxATRPoints=InpMaxATRPoints;
+   cfg.logLevel=InpLogLevel; cfg.csvJournal=InpEnableCSVJournal; cfg.csvFile=InpCSVFile;
+
+   if(!g_ctl.Configure(cfg))
      {
       Print("[TMB] Invalid configuration. Init failed.");
       return INIT_PARAMETERS_INCORRECT;
@@ -96,11 +113,9 @@ int OnInit()
       Print("[TMB] Symbol init failed for ", _Symbol);
       return INIT_FAILED;
      }
-   g_ctl.InitRiskJournal(g_ctl.LogPtr(), InpMaxTradesPerDay, InpMaxConsecutiveLosses,
-      InpMaxDailyLossMoney, InpCooldownSeconds, InpEnableCSVJournal, InpCSVFile);
 
-   PrintFormat("[TMB] v1.30 started on %s magic=%I64d lot=%.2f SL=$%.2f TP=$%.2f win=%d ratio>=%.2f move>=%dpts tps>=%.1f spread<=%d BE=%s/%s trail=%s/%s TPmode=%d risk=%s/%.2f%%/max%.2f",
-      _Symbol, InpMagicNumber, InpLotSize, InpSLMoney, InpTPMoney, InpTickWindow,
+   PrintFormat("[TMB] v%s started on %s magic=%I64d lot=%.2f SL=$%.2f TP=$%.2f win=%d ratio>=%.2f move>=%dpts tps>=%.1f spread<=%d BE=%s/%s trail=%s/%s TPmode=%d risk=%s/%.2f%%/max%.2f",
+      EA_VERSION, _Symbol, InpMagicNumber, InpLotSize, InpSLMoney, InpTPMoney, InpTickWindow,
       InpMinimumDirectionalRatio, InpMinimumPriceMovePoints, InpMinimumTicksPerSecond,
       InpMaxSpreadPoints, (InpEnableBreakEven?"ON":"OFF"), DoubleToString(InpBreakEvenBufferMoney,2),
       (InpEnableTrailing?"ON":"OFF"), DoubleToString(InpTrailingDistanceMoney,2), InpTPMode,
@@ -146,8 +161,9 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    if(openDeal != 0 && HistoryDealSelect(openDeal))
       actualComm += MathAbs(HistoryDealGetDouble(openDeal, DEAL_COMMISSION));
 
-   // Classify exit reason from position SL/TP proximity + controller state
-   ENUM_TMB_EXIT_REASON reason = ClassifyExit(price);
+   //--- Reason is derived from the journal record (placed TP vs last SL vs BE/trail
+   //--- state); a hint of UNKNOWN means "let the journal decide".
+   ENUM_TMB_EXIT_REASON reason = TMB_EXIT_UNKNOWN;
    datetime nowServer = TimeCurrent();
    string dayKey = TimeToString(nowServer, TIME_DATE);
    g_ctl.HandleExternalClose(price, profit, actualComm, reason, nowServer, dayKey);
@@ -174,18 +190,27 @@ ulong FindOpeningDeal(ulong closeDeal)
    return best;
   }
 
-ENUM_TMB_EXIT_REASON ClassifyExit(double exitPrice)
-  {
-   // Heuristic: compare exit price to last known SL/TP is not available post-close,
-   // so use controller state: BE done + favourable => TRAIL/BE, else SL/TP by TP-mode.
-   // Exact SL-vs-BE-vs-TRAIL disambiguation is refined by journal SL snapshot.
-   if(g_ctl.BeDone()) return TMB_EXIT_TRAIL;
-   return TMB_EXIT_SL;
-  }
+//+------------------------------------------------------------------+
+//| Optimization criterion: net profit of THIS EA on THIS symbol,    |
+//| read from deal history (authoritative, commission included).      |
 //+------------------------------------------------------------------+
 double OnTester()
-  {
-   // Return net total for optimization; journal total is authoritative.
-   return 0.0;
+   {
+   double net = 0.0;
+   datetime from = 0, to = TimeCurrent();
+   if(!HistorySelect(from, to)) return 0.0;
+   int total = HistoryDealsTotal();
+   for(int i=0; i<total; i++)
+     {
+      ulong tk = HistoryDealGetTicket(i);
+      if(tk==0) continue;
+      if(!HistoryDealSelect(tk)) continue;
+      if(HistoryDealGetString(tk, DEAL_SYMBOL) != _Symbol) continue;
+      if(HistoryDealGetInteger(tk, DEAL_MAGIC) != InpMagicNumber) continue;
+      net += HistoryDealGetDouble(tk, DEAL_PROFIT)
+           + HistoryDealGetDouble(tk, DEAL_SWAP)
+           + HistoryDealGetDouble(tk, DEAL_COMMISSION);
+     }
+   return net;
   }
 //+------------------------------------------------------------------+

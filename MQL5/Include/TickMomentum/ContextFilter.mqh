@@ -49,11 +49,15 @@ public:
         {
          m_hMA = iMA(symbol, tf, maPeriod, 0, MODE_EMA, PRICE_CLOSE);
          if(m_hMA==INVALID_HANDLE) { LogOnce("CTX: iMA handle failed"); return false; }
+         if(BarsCalculated(m_hMA) < m_maPeriod+1)
+            { LogOnce("CTX: iMA warming up"); }  // non-fatal: fail-safe blocks until ready
         }
       if(m_useVol)
         {
          m_hATR = iATR(symbol, tf, atrPeriod);
          if(m_hATR==INVALID_HANDLE) { LogOnce("CTX: iATR handle failed"); return false; }
+         if(BarsCalculated(m_hATR) < m_atrPeriod+1)
+            { LogOnce("CTX: iATR warming up"); }
         }
       return true;
      }
@@ -66,39 +70,25 @@ public:
 
    bool              IsActive(void) const { return (m_useTrend || m_useVol); }
 
-   bool              BuyAllowed(string &reason)
-     {
+bool              BuyAllowed(string &reason)  { return Allowed(true, reason); }
+   bool              SellAllowed(string &reason) { return Allowed(false, reason); }
+
+   //--- Single gate for both directions: ATR cap first, then trend alignment.
+   bool              Allowed(bool wantBuy, string &reason)
+      {
       reason="OK";
       if(!IsActive()) return true;
-      double ema, atr;
+      double ema=0, atr=0;
       if(!ReadValues(ema, atr, reason)) return false;   // fail-safe block
       if(m_useVol && m_maxATRPoints>0 && atr > m_maxATRPoints)
         { reason="VOLATILITY"; return false; }
-      if(m_useTrend)
-        {
-         double c = Close1();
-         if(c==0) { reason="CTX_NO_DATA"; return false; }
-         if(c <= ema) { reason="CONTEXT_FILTER"; return false; }
-        }
+      if(!m_useTrend) return true;
+      double c = Close1();
+      if(c==0) { reason="CTX_NO_DATA"; return false; }
+      if(wantBuy && c <= ema) { reason="CONTEXT_FILTER"; return false; }
+      if(!wantBuy && c >= ema) { reason="CONTEXT_FILTER"; return false; }
       return true;
-     }
-
-   bool              SellAllowed(string &reason)
-     {
-      reason="OK";
-      if(!IsActive()) return true;
-      double ema, atr;
-      if(!ReadValues(ema, atr, reason)) return false;
-      if(m_useVol && m_maxATRPoints>0 && atr > m_maxATRPoints)
-        { reason="VOLATILITY"; return false; }
-      if(m_useTrend)
-        {
-         double c = Close1();
-         if(c==0) { reason="CTX_NO_DATA"; return false; }
-         if(c >= ema) { reason="CONTEXT_FILTER"; return false; }
-        }
-      return true;
-     }
+      }
 
 private:
    void              LogOnce(string msg)

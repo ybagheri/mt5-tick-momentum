@@ -87,6 +87,8 @@ public:
       return NormalizeDouble(v, 8);
      }
 
+   //--- RAW broker distances (no safety margin). Use CMoneyMath::StopsLevelPrice()
+//--- for stop placement/gap checks so the margin lives in exactly one place.
    double            StopsLevelPrice(void) const { return (double)m_stopsLevel * m_point; }
    double            FreezeLevelPrice(void) const { return (double)m_freezeLevel * m_point; }
   };

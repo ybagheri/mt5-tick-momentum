@@ -9,11 +9,16 @@
 enum ENUM_TMB_SIGNAL { TMB_SIG_NONE=0, TMB_SIG_BUY=1, TMB_SIG_SELL=-1 };
 
 struct TBSignal
-  {
+   {
    ENUM_TMB_SIGNAL   signal;
    string            rejectReason;
    TBBurstResult     burst;
-  };
+
+   void              Reset(void)
+      {
+       signal=TMB_SIG_NONE; rejectReason=""; burst.Reset();
+      }
+   };
 
 class CSignalEngine
   {
@@ -30,7 +35,7 @@ public:
                               bool riskLocked, bool abnormalMarket)
      {
       TBSignal s;
-      ZeroMemory(s);
+      s.Reset();
       s.burst = burst;
       s.signal = TMB_SIG_NONE;
       if(riskLocked)       { s.rejectReason="RISK_LOCK"; return s; }

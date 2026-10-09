@@ -1,6 +1,11 @@
-# Parameter Guide — Tick Momentum Burst EA v1.00
+# Parameter Guide — Tick Momentum Burst EA v1.40
 
 All defaults are **initial research values, explicitly NOT optimized**.
+
+Inputs are collected into a single `TMBConfig` struct (`TMBConfig::SetDefaults()`
+holds the canonical defaults, mirrored by the `input` declarations below) and handed
+to `CStrategyController::Configure`. `scripts/static_check.py` fails if any input is
+left unwired.
 
 ## Trading
 
@@ -11,7 +16,7 @@ All defaults are **initial research values, explicitly NOT optimized**.
 | `InpTPMoney` | 2.0 | Initial take-profit target (≈1:2 gross R:R). Same conversion. |
 | `InpMagicNumber` | 26061001 | EA manages **only** positions with this magic **and** the chart symbol. |
 | `InpDeviationPoints` | 20 | Max slippage for `CTrade`. Tune per symbol (indices need more than FX). |
-| `InpMaxPositions` | 1 | Simultaneous strategy positions. Keep 1 (no grid/averaging by design). |
+| `InpMaxPositions` | 1 | Must be **1**. The pipeline manages a single ticket (no grid/averaging by design); any other value fails `OnInit` instead of being silently ignored. |
 | `InpTPMode` | 0 | 0=`FIXED_TP` · 1=`TRAILING_ONLY` (no fixed TP, requires trailing ON) · 2=`HYBRID` (fixed TP + trailing). |
 
 ## Commission
@@ -27,7 +32,7 @@ Actual commission is read from `DEAL_COMMISSION` (both legs) on close and journa
 
 | Input | Default | Meaning |
 |---|---|---|
-| `InpTickWindow` | 50 | Rolling window length (ticks). |
+| `InpTickWindow` | 50 | Rolling window length (ticks, min 5). Metrics are only `ready` once the window is **full** — a partial window never produces a signal, so backfill plus the first live ticks must fill it. |
 | `InpMinimumDirectionalRatio` | 0.70 | `max(up,down)/(up+down)` within [0.5, 1]. |
 | `InpMinimumPriceMovePoints` | 10 | Min absolute displacement `|latest.mid − oldest.mid|` in points. |
 | `InpMinimumTicksPerSecond` | 1.0 | Min `(n−1)/windowSeconds`. Irregular arrival handled via actual timestamps. |
@@ -100,8 +105,13 @@ then vol-cap-only, then both — compare against the unfiltered baseline in the 
 |---|---|---|
 | `InpCooldownSeconds` | 5 | No new entry after a close. Server-time measured. |
 | `InpMaxTradesPerDay` | 50 | Runaway-trading fuse. |
-| `InpMaxConsecutiveLosses` | 5 | Loss-streak lock (persists across days). |
+| `InpMaxConsecutiveLosses` | 5 | Loss-streak lock. Cleared on a new server day when `InpResetConsecOnNewDay` is true. |
 | `InpMaxDailyLossMoney` | 10.0 | Net daily loss lock (resets daily), actual-commission basis. |
+| `InpResetConsecOnNewDay` | true | On a new server day: reset daily counters (`trades`, `dailyNet`), release the daily/max-trades lock and — when true — reset the loss streak and release its lock. Set false to make a consecutive-loss lock persist until the EA restarts. |
+
+A trade counts once, on **open**. Closing updates P/L, the streak and the cooldown
+only, so a repeated close callback cannot inflate `InpMaxTradesPerDay` or hand out a
+second cooldown.
 
 ## Logging / journal
 
@@ -109,4 +119,16 @@ then vol-cap-only, then both — compare against the unfiltered baseline in the 
 |---|---|---|
 | `InpLogLevel` | 3 | 0=OFF 1=ERROR 2=WARNING 3=INFO 4=DEBUG (per-tick only at DEBUG). |
 | `InpEnableCSVJournal` | true | Write `InpCSVFile` in `MQL5/Files/`. |
-| `InpCSVFile` | TickMomentumJournal.csv | Columns: close_time,symbol,dir,vol,entry,exit,sl0,tp0,spread_entry,est_comm,actual_comm,gross,net,mfe,mae,hold_s,ticks,ratio,disp_pts,tps,exit_reason,ticket. |
+| `InpCSVFile` | TickMomentumJournal.csv | Columns: close_time,symbol,dir,vol,entry,exit,sl0,tp0,spread_entry,est_comm,actual_comm,gross,net,mfe,mae,hold_s,ticks,ratio,disp_pts,tps,exit_reason,ticket,risk_k. |
+
+The header is written **only when the file is new or empty**, so restarts append to
+the existing journal instead of truncating it. Exit reason is classified from the
+trade record: a fill at/beyond the placed TP is `TAKE_PROFIT` (checked first, matched
+directionally so gaps and tick granularity still count), then `TRAILING_STOP`, then
+`BREAK_EVEN`, then `STOP_LOSS`.
+
+## Tester criterion
+
+`OnTester()` returns this EA's net profit on this symbol, summed from deal history
+(`DEAL_PROFIT + DEAL_SWAP + DEAL_COMMISSION`) for the configured magic — so
+optimization ranks actual net result rather than a constant zero.

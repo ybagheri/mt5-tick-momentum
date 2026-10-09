@@ -9,19 +9,20 @@
 enum ENUM_TMB_TICK_DIR { TMB_TICK_NEUTRAL=0, TMB_TICK_UP=1, TMB_TICK_DOWN=-1 };
 
 struct TMBTick
-  {
-   datetime          time;      // tick time (server)
-   datetime          timeMsc;   // ms precision truncated to seconds for struct simplicity
-   long              time_msc;  // full ms epoch
+   {
+   long              time_msc;  // full ms epoch (server)
    double            bid;
    double            ask;
    double            mid;
-   double            last;
    long              volume;
    int               flags;
    int               spreadPoints;
    ENUM_TMB_TICK_DIR dir;       // vs previous mid
-  };
+
+   datetime          TimeSec(void) const { return (datetime)(time_msc/1000); }
+   void              Clear(void)
+     { time_msc=0; bid=0; ask=0; mid=0; volume=0; flags=0; spreadPoints=0; dir=TMB_TICK_NEUTRAL; }
+   };
 
 class CTickDataCollector
   {
@@ -51,6 +52,15 @@ public:
    int               Window(void) const { return m_window; }
    int               Count(void)  const { return m_count; }
    long              TotalTicks(void) const { return m_totalTicks; }
+   bool              IsFull(void)  const { return m_count >= m_window; }
+
+   //--- Zero-based access oldest->newest over the ring (0 = oldest, Count()-1 = newest)
+   bool              At(int index, TMBTick &t) const
+      {
+       if(index < 0 || index >= m_count) return false;
+       t = m_buf[(FirstIndex() + index) % m_window];
+       return true;
+      }
 
    //--- Backfill with recent history (best effort; works in Tester too)
    int               Backfill(void)
@@ -59,15 +69,15 @@ public:
       int need = m_window;
       int got = CopyTicks(m_symbol, ticks, COPY_TICKS_ALL, 0, need);
       if(got <= 0) return 0;
+      int sp = (int)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);   // hoisted out of loop
       // ticks are oldest->newest; feed in order
       for(int i=0; i<got; i++)
          PushTick(ticks[i].time_msc, ticks[i].bid, ticks[i].ask,
-                  ticks[i].last, (long)ticks[i].volume, (int)ticks[i].flags,
-                  (int)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD));
+                  ticks[i].last, (long)ticks[i].volume, (int)ticks[i].flags, sp);
       return got;
      }
 
-   //--- Push one live tick; returns direction
+   //--- Push one tick; returns direction. `last` is accepted for API symmetry.
    ENUM_TMB_TICK_DIR PushTick(long time_msc, double bid, double ask, double last,
                               long volume, int flags, int spreadPoints)
      {
@@ -83,9 +93,7 @@ public:
 
       TMBTick t;
       t.time_msc = time_msc;
-      t.time     = (datetime)(time_msc / 1000);
-      t.timeMsc  = (datetime)(time_msc / 1000);
-      t.bid=bid; t.ask=ask; t.mid=mid; t.last=last;
+      t.bid=bid; t.ask=ask; t.mid=mid;
       t.volume=volume; t.flags=flags; t.spreadPoints=spreadPoints; t.dir=d;
 
       m_buf[m_head] = t;
@@ -95,43 +103,44 @@ public:
       return d;
      }
 
-   //--- Convenience: capture current market tick
-   bool              OnMarketTick(void)
+   //--- Convenience: capture current market tick.
+   //--- Returns false ONLY when there is no tick at all; a duplicate tick is
+   //--- reported as `duplicate` so callers can skip recomputing metrics on it
+   //--- (OnTick can fire several times for the very same tick).
+   bool              OnMarketTick(bool &duplicate)
      {
       MqlTick tk;
+      duplicate=false;
       if(!SymbolInfoTick(m_symbol, tk)) return false;
       // NOTE: MqlTick has no spread field; read it from symbol properties.
       int sp = (int)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
+      if(m_count>0)
+        {
+         TMBTick lastTick = m_buf[(m_head - 1 + m_window) % m_window];
+         if(lastTick.time_msc==tk.time_msc && lastTick.bid==tk.bid && lastTick.ask==tk.ask)
+           { duplicate=true; return true; }
+        }
       PushTick(tk.time_msc, tk.bid, tk.ask, tk.last, (long)tk.volume, (int)tk.flags, sp);
       return true;
      }
 
-   //--- Copy window oldest->newest into out[] (up to count). Returns n.
-   int               GetWindow(TMBTick &out[])
-     {
-      int n = m_count;
-      ArrayResize(out, n);
-      int start = (m_head - m_count + m_window * 10) % m_window;
-      for(int i=0; i<n; i++)
-         out[i] = m_buf[(start + i) % m_window];
-      return n;
-     }
-
-   bool              GetLatest(TMBTick &t)
-     {
+bool              GetLatest(TMBTick &t)
+      {
       if(m_count==0) return false;
-      int idx = (m_head - 1 + m_window) % m_window;
-      t = m_buf[idx];
+      t = m_buf[(m_head - 1 + m_window) % m_window];
       return true;
-     }
+      }
 
    bool              GetOldest(TMBTick &t)
-     {
+      {
       if(m_count==0) return false;
-      int start = (m_head - m_count + m_window * 10) % m_window;
-      t = m_buf[start];
+      t = m_buf[FirstIndex()];
       return true;
-     }
-  };
+      }
+
+private:
+   int               FirstIndex(void) const
+      { return (m_head - m_count + m_window) % m_window; }
+   };
 
 #endif
